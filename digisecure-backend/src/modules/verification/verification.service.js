@@ -865,6 +865,11 @@ async function performUploadVerification(req, context = null) {
   const metadataHashMatch = candidateHashes.metadataHash === document.metadataHash;
   const canonicalHashMatch = candidateHashes.canonicalContentHash === document.canonicalContentHash;
   const pageCountMatch = Number(parsedUpload.pageCount) === Number(document.pageCount);
+  const issuedFileHash =
+    typeof document?.ocrBaseline?.fileHash === "string" && document.ocrBaseline.fileHash.length
+      ? document.ocrBaseline.fileHash
+      : null;
+  const issuedBinaryHashMatch = issuedFileHash ? issuedFileHash === uploadedFileHash : null;
 
   const originalWords = flattenWordPositions(document.textPositions || []);
   const candidateWords = flattenWordPositions(parsedUpload.textPositions || []);
@@ -902,12 +907,14 @@ async function performUploadVerification(req, context = null) {
   let visualRectanglesByPage = {};
   let visualLayerChanged = false;
   let visualDetectorError = null;
+  let visualBaselineAvailable = false;
 
   if (env.VISUAL_DIFF_ENABLED) {
     try {
       const baselinePdfBuffer = await readIssuedPdfBuffer(document);
 
       if (baselinePdfBuffer?.length) {
+        visualBaselineAvailable = true;
         const visualComparison = await withTimeout(
           comparePdfVisualLayers({
             baselinePdfBuffer,
@@ -974,6 +981,16 @@ async function performUploadVerification(req, context = null) {
     resultStatus = "tampered";
     resultReasonCode = "PAGE_COUNT_MISMATCH";
     resultMessage = "Uploaded PDF page count does not match the issued document";
+  } else if (
+    issuedBinaryHashMatch === false &&
+    !detectors.textLayerChanged &&
+    !detectors.ocrLayerChanged &&
+    !detectors.visualLayerChanged &&
+    !visualBaselineAvailable
+  ) {
+    resultStatus = "suspicious";
+    resultReasonCode = "BINARY_HASH_MISMATCH_WITHOUT_VISUAL_BASELINE";
+    resultMessage = "Uploaded PDF differs from the issued binary, but visual baseline is unavailable";
   } else if (detectors.textLayerChanged) {
     resultStatus = "tampered";
     resultReasonCode = "TEXT_DIFF_DETECTED";
@@ -1021,7 +1038,9 @@ async function performUploadVerification(req, context = null) {
       ...(detectors.visualLayerChanged ? ["Visual layer differences exceeded threshold"] : []),
       ...(!canonicalHashMatch ? ["Canonical content hash mismatch"] : []),
       ...(!metadataHashMatch ? ["Metadata hash mismatch"] : []),
+      ...(issuedBinaryHashMatch === false ? ["Uploaded binary hash differs from issued baseline hash"] : []),
       ...(signatureVerification.signatureValid === false ? ["Signature validation failed"] : []),
+      ...(!visualBaselineAvailable && env.VISUAL_DIFF_ENABLED ? ["Visual baseline unavailable in runtime"] : []),
       ...(visualDetectorError ? [`Visual detector fallback: ${visualDetectorError}`] : [])
     ]
   };
@@ -1054,6 +1073,8 @@ async function performUploadVerification(req, context = null) {
       canonicalHashMatch,
       metadataHashMatch,
       pageCountMatch,
+      issuedBinaryHashMatch,
+      visualBaselineAvailable,
       detectors
     },
     tamperFindings

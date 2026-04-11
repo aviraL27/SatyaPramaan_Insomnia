@@ -16,7 +16,8 @@ describe("verification.service upload flow", () => {
     buildHashes,
     verifyPayloadResult = true,
     ocrComparison = null,
-    visualComparison = null
+    visualComparison = null,
+    issuedPdfReadError = null
   }) {
     jest.resetModules();
 
@@ -63,7 +64,13 @@ describe("verification.service upload flow", () => {
       buildIssuanceHashes: jest.fn().mockReturnValue(buildHashes),
       buildSignaturePayload: jest.fn().mockReturnValue({ payload: "signature-basis" }),
       verifyPayload: jest.fn().mockReturnValue(verifyPayloadResult),
-      readIssuedFile: jest.fn().mockResolvedValue(Buffer.from("issued-pdf")),
+      readIssuedFile: jest.fn().mockImplementation(() => {
+        if (issuedPdfReadError) {
+          return Promise.reject(issuedPdfReadError);
+        }
+
+        return Promise.resolve(Buffer.from("issued-pdf"));
+      }),
       diffTokenStreams: jest.fn((left, right) =>
         left === right
           ? [{ value: left }]
@@ -624,6 +631,80 @@ describe("verification.service upload flow", () => {
     expect(result.result.reasonCode).toBe("VISUAL_DIFF_DETECTED");
     expect(result.result.visualDiffScoreByPage).toEqual([{ pageNumber: 1, score: 0.41 }]);
     expect(result.result.detectors.visualLayerChanged).toBe(true);
+  });
+
+  it("returns suspicious when binary hash mismatches and visual baseline is unavailable", async () => {
+    const documentId = "doc-visual-baseline-missing";
+    const fingerprint = crypto.createHash("sha256").update("issuer-public-key-pem").digest("hex");
+    const { service } = loadService({
+      document: {
+        documentId,
+        tenantId: "tenant-1",
+        status: "issued",
+        issuerUserId: "issuer-1",
+        issuerInstitutionName: "Issuer One",
+        verificationToken: "token-visual-baseline-missing",
+        canonicalContentHash: "canon-visual-baseline-missing",
+        metadataHash: "meta-visual-baseline-missing",
+        signingKeyFingerprint: fingerprint,
+        signatureId: "sig-visual-baseline-missing",
+        signatureValue: "signed-value",
+        pageCount: 1,
+        title: "Certificate",
+        documentType: "certificate",
+        recipientName: "Ava",
+        recipientReference: null,
+        expiresAt: null,
+        customMetadata: {},
+        issuedAt: new Date("2026-01-01T00:00:00.000Z"),
+        fileBinaryHash: "source-hash",
+        ocrBaseline: {
+          enabled: true,
+          fileHash: "issued-baseline-hash",
+          fullText: "hello",
+          pages: [{ pageNumber: 1, text: "hello", confidence: 0.92 }],
+          averageConfidence: 0.92,
+          pageCount: 1
+        },
+        textPositions: [
+          {
+            pageNumber: 1,
+            words: [{ text: "hello", normalizedText: "hello", x: 12, y: 12, width: 20, height: 10, readingOrderIndex: 0 }]
+          }
+        ],
+        qrPayload: {
+          documentId,
+          tenantId: "tenant-1",
+          signatureId: "sig-visual-baseline-missing",
+          contentHash: "canon-visual-baseline-missing",
+          verificationToken: "token-visual-baseline-missing",
+          issuedAt: new Date("2026-01-01T00:00:00.000Z"),
+          qrSignature: "qr-signature"
+        }
+      },
+      parsedPdf: {
+        pageCount: 1,
+        metadata: { info: {} },
+        textPositions: [
+          {
+            pageNumber: 1,
+            words: [{ text: "hello", normalizedText: "hello", x: 12, y: 12, width: 20, height: 10, readingOrderIndex: 0 }]
+          }
+        ],
+        pageText: [{ pageNumber: 1, text: "hello" }],
+        fullText: "hello"
+      },
+      buildHashes: {
+        metadataHash: "meta-visual-baseline-missing",
+        canonicalContentHash: "canon-visual-baseline-missing"
+      },
+      issuedPdfReadError: new Error("ENOENT: no such file or directory")
+    });
+
+    const result = await service.verifyUploadedFile(buildRequest({ documentId }));
+
+    expect(result.result.status).toBe("suspicious");
+    expect(result.result.reasonCode).toBe("BINARY_HASH_MISMATCH_WITHOUT_VISUAL_BASELINE");
   });
 
   it("returns pending when async mode is requested", async () => {
