@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   BrowserRouter,
   Link,
@@ -187,14 +187,12 @@ function PublicLayout() {
           <Link to="/" className="brand-mark header-brand" aria-label={t("SatyaPramaan home")}>
             <span>{APP_NAME}</span>
           </Link>
-          <div className="controls-row">
-            <LanguageSwitcher compact />
-          </div>
         </header>
       )}
       <main className={isLandingPage ? "public-main landing-main" : "public-main"}>
         <Outlet />
       </main>
+      <ThemeFloatingToggle />
     </div>
   )
 }
@@ -211,6 +209,8 @@ function InstitutionLayout() {
       ? t("Document Detail")
       : t("Institution Workspace"))
   const isDashboard = location.pathname === "/app/dashboard"
+  const isProfilePage = location.pathname === "/app/profile"
+  const isIssueDocumentPage = location.pathname === "/app/issue-document"
 
   useEffect(() => {
     setSidebarOpen(false)
@@ -228,7 +228,6 @@ function InstitutionLayout() {
           <div className="brand-mark header-brand">
             <span>{APP_NAME}</span>
           </div>
-          <small>{profile?.institutionName || profile?.displayName || t("Institution Console")}</small>
         </div>
 
         <nav className="sidebar-nav" aria-label={t("Institution navigation")}>
@@ -248,7 +247,7 @@ function InstitutionLayout() {
         />
       ) : null}
 
-      <div className={`app-main-area ${isDashboard ? "dashboard-main-area" : ""}`.trim()}>
+      <div className={`app-main-area ${isDashboard ? "dashboard-main-area" : ""} ${isProfilePage ? "profile-main-area" : ""}`.trim()}>
         <header className="topbar">
           <div className="topbar-left">
             <button
@@ -265,12 +264,11 @@ function InstitutionLayout() {
             )}
           </div>
           <div className="topbar-right">
-            {!isDashboard ? <LanguageSwitcher compact /> : null}
             <label className="search-wrap" aria-label={t("Search")}>
               <input type="search" placeholder={t("Search documents, IDs, recipients")} />
             </label>
-            {!isDashboard ? (
-              <button className="btn btn-ghost chip-btn" onClick={() => navigate("/verify")}>
+            {isIssueDocumentPage ? (
+              <button className="btn btn-ghost chip-btn issue-verify-btn" onClick={() => navigate("/verify")}>
                 {t("Public Verify")}
               </button>
             ) : null}
@@ -286,7 +284,7 @@ function InstitutionLayout() {
             </button>
           </div>
         </header>
-        <main className={`workspace-content ${isDashboard ? "dashboard-viewport" : ""}`.trim()}>
+        <main className={`workspace-content ${isDashboard ? "dashboard-viewport" : ""} ${isProfilePage ? "profile-viewport" : ""}`.trim()}>
           <Outlet />
         </main>
       </div>
@@ -310,25 +308,29 @@ function LanguageSwitcher({ compact = false }) {
   )
 }
 
-function ThemeFloatingToggle() {
+function ThemeToggleButton({ className = "theme-fab" }) {
   const { theme, toggleTheme } = useTheme()
   const { t } = useLanguage()
-  const location = useLocation()
-  const showDashboardLanguage = location.pathname === "/app/dashboard"
 
   return (
+    <button
+      type="button"
+      className={className}
+      onClick={toggleTheme}
+      aria-label={theme === "dark" ? t("Switch to Light Mode") : t("Switch to Dark Mode")}
+    >
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M21 12.8A9 9 0 1 1 11.2 3a7.2 7.2 0 1 0 9.8 9.8Z" />
+      </svg>
+    </button>
+  )
+}
+
+function ThemeFloatingToggle() {
+  return (
     <div className="theme-dock">
-      {showDashboardLanguage ? <LanguageSwitcher compact /> : null}
-      <button
-        type="button"
-        className="theme-fab"
-        onClick={toggleTheme}
-        aria-label={theme === "dark" ? t("Switch to Light Mode") : t("Switch to Dark Mode")}
-      >
-        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-          <path d="M21 12.8A9 9 0 1 1 11.2 3a7.2 7.2 0 1 0 9.8 9.8Z" />
-        </svg>
-      </button>
+      <LanguageSwitcher compact />
+      <ThemeToggleButton />
     </div>
   )
 }
@@ -346,9 +348,6 @@ function LandingPage() {
           <Link to="/" className="brand-mark landing-brand" aria-label={t("SatyaPramaan home")}>
             <span>{APP_NAME}</span>
           </Link>
-          <div className="controls-row">
-            <LanguageSwitcher compact />
-          </div>
         </div>
 
         <div className="landing-crazy-copy">
@@ -358,14 +357,7 @@ function LandingPage() {
           </p>
           <div className="landing-crazy-actions">
             <Link to="/auth?mode=signin" className="btn btn-primary landing-action-btn">{t("Sign In")}</Link>
-            <Link to="/auth?mode=register" className="btn btn-secondary landing-action-btn">{t("Register Institution")}</Link>
-          </div>
-          <div className="landing-secondary-actions">
-            <div>
-              <h4>{t("Public Verification")}</h4>
-              <p>{t("Scan QR payloads or upload PDFs to verify authenticity.")}</p>
-            </div>
-            <Link to="/verify" className="btn btn-ghost">{t("Open Verification")}</Link>
+            <Link to="/auth?mode=register" className="btn btn-secondary landing-action-btn">{t("Register")}</Link>
           </div>
         </div>
 
@@ -634,10 +626,6 @@ function DashboardPage() {
     }
   }, [token, profile])
 
-  const documentAuditEntries = useMemo(
-    () => (audit || []).filter((entry) => Boolean(entry?.documentId)).length,
-    [audit]
-  )
   const hasTrustActivity =
     Number(trust?.metrics?.totalVerifications || 0) > 0 ||
     Number(trust?.metrics?.tamperedDetections || 0) > 0 ||
@@ -732,51 +720,13 @@ function DashboardPage() {
         </div>
       </section>
 
-      <section className="card dashboard-health-strip">
-        <div className="dashboard-signal-row">
-          <span className="signal-chip positive">{`${t("Documents")}: ${documents.length}`}</span>
-          <span className="signal-chip neutral">{`${t("Audit")}: ${documentAuditEntries}`}</span>
-          <span className="signal-chip positive">{`${t("Trust")}: ${trustDisplayValue}`}</span>
-        </div>
-        <p className="inline-note">
-          {error ? error : t("Open Documents, Verification Activity, or Audit Logs for full detail.")}
-        </p>
-      </section>
-
-      <section className="card">
-        <div className="section-head">
-          <h3>{t("Recent Documents")}</h3>
-          <Link to="/app/documents" className="btn btn-ghost">{t("View All")}</Link>
-        </div>
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>{t("Title")}</th>
-              <th>{t("Recipient")}</th>
-              <th>{t("Issued")}</th>
-              <th>{t("Status")}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {documents.slice(0, 5).map((document) => (
-              <tr key={document.documentId}>
-                <td data-label={t("Title")}>
-                  <Link className="link-inline" to={`/app/documents/${document.documentId}`}>{document.title}</Link>
-                </td>
-                <td data-label={t("Recipient")}>{document.recipientName}</td>
-                <td data-label={t("Issued")}>{formatDate(document.issuedAt)}</td>
-                <td data-label={t("Status")}><StatusBadge status={document.status || "issued"} /></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
     </div>
   )
 }
 
 function IssueDocumentPage() {
   const { token, profile } = useAuth()
+  const { t } = useLanguage()
   const [step, setStep] = useState(1)
   const [form, setForm] = useState({
     title: "",
@@ -972,11 +922,11 @@ function IssueDocumentPage() {
   }
 
   const steps = [
-    "Document Metadata",
-    "PDF Upload",
-    "Verification Setup Review",
-    "QR Placement + Signature Review",
-    "Complete",
+    t("Document Metadata"),
+    t("PDF Upload"),
+    t("Verification Setup Review"),
+    t("QR Placement + Signature Review"),
+    t("Complete"),
   ]
 
   const metadataHashPreview = shortHash(String(form.metadata || "{}"))
@@ -1002,25 +952,25 @@ function IssueDocumentPage() {
             <form className="form-grid two-col-form" onSubmit={handleSubmit}>
               {step === 1 ? (
                 <>
-                  <h3>Step 1: Document Metadata</h3>
+                  <h3>{t("Step 1: Document Metadata")}</h3>
                   <label>
-                    Document Title
+                    {t("Document Title")}
                     <input value={form.title} onChange={(event) => setForm((prev) => ({ ...prev, title: event.target.value }))} required />
                   </label>
                   <label>
-                    Document Type
+                    {t("Document Type")}
                     <input value={form.documentType} onChange={(event) => setForm((prev) => ({ ...prev, documentType: event.target.value }))} required />
                   </label>
                   <label>
-                    Recipient Name
+                    {t("Recipient Name")}
                     <input value={form.recipientName} onChange={(event) => setForm((prev) => ({ ...prev, recipientName: event.target.value }))} required />
                   </label>
                   <label>
-                    Recipient Reference ID
+                    {t("Recipient Reference ID")}
                     <input value={form.recipientReference} onChange={(event) => setForm((prev) => ({ ...prev, recipientReference: event.target.value }))} />
                   </label>
                   <label className="full-width">
-                    Notes / Issuance Metadata
+                    {t("Notes / Issuance Metadata")}
                     <textarea rows={4} value={form.metadata} onChange={(event) => setForm((prev) => ({ ...prev, metadata: event.target.value }))} />
                   </label>
                 </>
@@ -1028,21 +978,21 @@ function IssueDocumentPage() {
 
               {step === 2 ? (
                 <>
-                  <h3>Step 2: PDF Upload</h3>
+                  <h3>{t("Step 2: PDF Upload")}</h3>
                   <label className="full-width">
-                    PDF File
+                    {t("PDF File")}
                     <input type="file" accept="application/pdf" onChange={(event) => setFile(event.target.files?.[0] || null)} required />
                   </label>
                   <div className="inline-grid full-width">
                     <article className="soft-panel">
-                      <h4>File Details</h4>
-                      <p>Filename: {file?.name || "No file selected"}</p>
-                      <p>Page Count: {pageCount ?? "-"}</p>
+                      <h4>{t("File Details")}</h4>
+                      <p>{t("Filename")}: {file?.name || t("No file selected")}</p>
+                      <p>{t("Page Count")}: {pageCount ?? "-"}</p>
                     </article>
                     <article className="soft-panel">
-                      <h4>Validation Feedback</h4>
-                      <p>{file ? "PDF selected and ready for issuance." : "Select a PDF to continue."}</p>
-                      <p>{file ? `Size: ${Math.round(file.size / 1024)} KB` : "No file selected"}</p>
+                      <h4>{t("Validation Feedback")}</h4>
+                      <p>{file ? t("PDF selected and ready for issuance.") : t("Select a PDF to continue.")}</p>
+                      <p>{file ? `${t("Size")}: ${Math.round(file.size / 1024)} KB` : t("No file selected")}</p>
                     </article>
                   </div>
                 </>
@@ -1050,50 +1000,50 @@ function IssueDocumentPage() {
 
               {step === 3 ? (
                 <>
-                  <h3>Step 3: Verification Setup Review</h3>
+                  <h3>{t("Step 3: Verification Setup Review")}</h3>
                   <ul className="review-list full-width">
-                    <li>Canonical metadata hash preview: {metadataHashPreview}</li>
-                    <li>Signing fingerprint: generated by backend during issuance</li>
-                    <li>Generated document ID: {issuedDocument?.documentId || "Generated after issue"}</li>
-                    <li>Verification token preview: {issuedDocument?.verificationToken || issuedDocument?.qrPayload?.verificationToken || "Generated after issue"}</li>
+                    <li>{t("Canonical metadata hash preview")}: {metadataHashPreview}</li>
+                    <li>{t("Signing fingerprint")}: {t("generated by backend during issuance")}</li>
+                    <li>{t("Generated document ID")}: {issuedDocument?.documentId || t("Generated after issue")}</li>
+                    <li>{t("Verification token preview")}: {issuedDocument?.verificationToken || issuedDocument?.qrPayload?.verificationToken || t("Generated after issue")}</li>
                   </ul>
                 </>
               ) : null}
 
               {step === 4 ? (
                 <>
-                  <h3>Step 4: QR Placement + Signature Review</h3>
+                  <h3>{t("Step 4: QR Placement + Signature Review")}</h3>
                   <div className="inline-grid full-width">
                     <article className="soft-panel pdf-mini">
-                      <p>PDF preview with QR placement</p>
+                      <p>{t("PDF preview with QR placement")}</p>
                       <div className="mini-page">
                         {previewImage ? (
-                          <img className="mini-page-image" src={previewImage} alt="PDF preview with QR placement" />
+                          <img className="mini-page-image" src={previewImage} alt={t("PDF preview with QR placement")} />
                         ) : (
                           <div className="mini-qr" />
                         )}
                       </div>
                       <p className="inline-note">
                         {previewError || (file
-                          ? "Preview shows page 1 with the issuance QR/signature block placed on the document."
-                          : "Upload a PDF to generate the placement preview.")}
+                          ? t("Preview shows page 1 with the issuance QR/signature block placed on the document.")
+                          : t("Upload a PDF to generate the placement preview."))}
                       </p>
                     </article>
                     <article className="soft-panel">
-                      <h4>Signature / Hash Summary</h4>
-                      <p>Signature type: backend-configured signing</p>
-                      <p>Content hash: generated on issue</p>
-                      <p>Metadata hash: {metadataHashPreview}</p>
+                      <h4>{t("Signature / Hash Summary")}</h4>
+                      <p>{t("Signature type")}: {t("backend-configured signing")}</p>
+                      <p>{t("Content hash")}: {t("generated on issue")}</p>
+                      <p>{t("Metadata hash")}: {metadataHashPreview}</p>
                     </article>
                   </div>
                   <button className={busy ? "btn btn-primary is-loading full-width" : "btn btn-primary full-width"} disabled={busy || !file} aria-busy={busy}>
                     {busy ? (
                       <>
                         <span className="btn-spinner" aria-hidden="true" />
-                        <span>Issuing Document...</span>
+                        <span>{t("Issuing Document...")}</span>
                       </>
                     ) : (
-                      "Issue Document"
+                      t("Issue Document")
                     )}
                   </button>
                 </>
@@ -1101,42 +1051,42 @@ function IssueDocumentPage() {
 
               {step === 5 ? (
                 <div className="success-wrap full-width">
-                  <h3>Step 5: Complete</h3>
-                  <p>{issuedDocument ? "Document issued and signed successfully." : "Run issuance to complete this step."}</p>
+                  <h3>{t("Step 5: Complete")}</h3>
+                  <p>{issuedDocument ? t("Document issued and signed successfully.") : t("Run issuance to complete this step.")}</p>
                   {issuedDocument ? (
                     <div className="action-row">
-                      <button type="button" className="btn btn-primary" onClick={downloadIssuedPdf}>Download Issued PDF</button>
-                      <button type="button" className="btn btn-secondary" onClick={() => navigator.clipboard.writeText(issuedDocument.documentId || "")}>Copy Document ID</button>
-                      <button type="button" className="btn btn-secondary" onClick={() => navigator.clipboard.writeText(`${window.location.origin}/verify?documentId=${issuedDocument.documentId}`)}>Copy Verification Link</button>
-                      <button type="button" className="btn btn-ghost" onClick={resetWizard}>Issue Another Document</button>
+                      <button type="button" className="btn btn-primary" onClick={downloadIssuedPdf}>{t("Download Issued PDF")}</button>
+                      <button type="button" className="btn btn-secondary" onClick={() => navigator.clipboard.writeText(issuedDocument.documentId || "")}>{t("Copy Document ID")}</button>
+                      <button type="button" className="btn btn-secondary" onClick={() => navigator.clipboard.writeText(`${window.location.origin}/verify?documentId=${issuedDocument.documentId}`)}>{t("Copy Verification Link")}</button>
+                      <button type="button" className="btn btn-ghost" onClick={resetWizard}>{t("Issue Another Document")}</button>
                     </div>
                   ) : null}
                 </div>
               ) : null}
 
               {message ? <Toast message={message} /> : null}
-              {error ? <ErrorState title="Issuance Error" body={error} /> : null}
+              {error ? <ErrorState title={t("Issuance Error")} body={error} /> : null}
 
               <div className="wizard-actions full-width">
-                <button type="button" className="btn btn-ghost" onClick={() => setStep((value) => Math.max(1, value - 1))}>Previous</button>
-                <button type="button" className="btn btn-primary" onClick={() => setStep((value) => Math.min(5, value + 1))}>{step === 5 ? "Done" : "Next Step"}</button>
+                <button type="button" className="btn btn-ghost" onClick={() => setStep((value) => Math.max(1, value - 1))}>{t("Previous")}</button>
+                <button type="button" className="btn btn-primary" onClick={() => setStep((value) => Math.min(5, value + 1))}>{step === 5 ? t("Done") : t("Next Step")}</button>
               </div>
             </form>
           </article>
 
           <aside className="card soft wizard-side">
-            <h4>Context Summary</h4>
-            <p>Institution: {profile?.institutionName || profile?.displayName || "-"}</p>
-            <p>Draft Title: {form.title || "-"}</p>
-            <p>Recipient: {form.recipientName || "-"}</p>
-            <p>Preview status: {file ? "Ready for issuance signing" : "Waiting for PDF upload"}</p>
-            {issuedDocument ? <p>Issued Document ID: {issuedDocument.documentId}</p> : null}
+            <h4>{t("Context Summary")}</h4>
+            <p>{t("Institution")}: {profile?.institutionName || profile?.displayName || "-"}</p>
+            <p>{t("Draft Title")}: {form.title || "-"}</p>
+            <p>{t("Recipient")}: {form.recipientName || "-"}</p>
+            <p>{t("Preview status")}: {file ? t("Ready for issuance signing") : t("Waiting for PDF upload")}</p>
+            {issuedDocument ? <p>{t("Issued Document ID")}: {issuedDocument.documentId}</p> : null}
             {issuedDocument ? (
               <div className="qr-preview-block">
-                {qrCodeImage ? <img className="qr-image" src={qrCodeImage} alt="Issued document QR code" /> : null}
+                {qrCodeImage ? <img className="qr-image" src={qrCodeImage} alt={t("Issued document QR code")} /> : null}
                 <div className="action-row">
                   <button className="btn btn-secondary" type="button" onClick={() => navigator.clipboard.writeText(JSON.stringify(issuedDocument.qrPayload || {}, null, 2))}>
-                    Copy QR JSON
+                    {t("Copy QR JSON")}
                   </button>
                 </div>
               </div>
@@ -1150,6 +1100,7 @@ function IssueDocumentPage() {
 
 function DocumentsPage() {
   const { token } = useAuth()
+  const { t } = useLanguage()
   const [documents, setDocuments] = useState([])
   const [error, setError] = useState("")
   const [message, setMessage] = useState("")
@@ -1220,60 +1171,60 @@ function DocumentsPage() {
   return (
     <div className="page-stack">
       <section className="card filter-toolbar">
-        <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search title, recipient, or document ID" />
+        <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder={t("Search title, recipient, or document ID")} />
         <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}>
-          <option value="all">Type</option>
+          <option value="all">{t("Type")}</option>
           {documentTypes.map((type) => (
             <option key={type} value={type}>{type}</option>
           ))}
         </select>
         <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-          <option value="all">Status</option>
-          <option value="issued">Issued</option>
-          <option value="verified">Verified</option>
-          <option value="revoked">Revoked</option>
-          <option value="superseded">Superseded</option>
-          <option value="tampered">Tampered</option>
+          <option value="all">{t("Status")}</option>
+          <option value="issued">{t("Issued")}</option>
+          <option value="verified">{t("Verified")}</option>
+          <option value="revoked">{t("Revoked")}</option>
+          <option value="superseded">{t("Superseded")}</option>
+          <option value="tampered">{t("Tampered")}</option>
         </select>
       </section>
 
       <section className="card page-stack">
         <div className="section-head">
-          <h3>Issued Documents</h3>
-          <Link className="btn btn-primary" to="/app/issue-document">Issue New Document</Link>
+          <h3>{t("Issued Documents")}</h3>
+          <Link className="btn btn-primary" to="/app/issue-document">{t("Issue New Document")}</Link>
         </div>
-        {error ? <ErrorState title="Document Error" body={error} /> : null}
+        {error ? <ErrorState title={t("Document Error")} body={error} /> : null}
         {message ? <Toast message={message} /> : null}
 
         <table className="data-table">
           <thead>
             <tr>
               <th>Document ID</th>
-              <th>Document Title</th>
-              <th>Recipient</th>
-              <th>Issued At</th>
-              <th>Status</th>
-              <th>Actions</th>
+              <th>{t("Document Title")}</th>
+              <th>{t("Recipient")}</th>
+              <th>{t("Issued At")}</th>
+              <th>{t("Status")}</th>
+              <th>{t("Actions")}</th>
             </tr>
           </thead>
           <tbody>
             {filteredDocuments.length ? filteredDocuments.map((document) => (
               <tr key={document.documentId}>
-                <td data-label="Document ID">{document.documentId}</td>
-                <td data-label="Document Title">
+                <td data-label={t("Document ID")}>{document.documentId}</td>
+                <td data-label={t("Document Title")}>
                   <Link to={`/app/documents/${document.documentId}`} className="link-inline">{document.title}</Link>
                 </td>
-                <td data-label="Recipient">{document.recipientName || "-"}</td>
-                <td data-label="Issued At">{formatDate(document.issuedAt)}</td>
-                <td data-label="Status"><StatusBadge status={document.status || "issued"} /></td>
-                <td data-label="Actions" className="table-actions">
-                  <Link to={`/app/documents/${document.documentId}`} className="link-inline">Detail</Link>
-                  <button className="btn btn-ghost" onClick={() => setRevokeModal({ open: true, documentId: document.documentId, reason: "" })}>Revoke</button>
+                <td data-label={t("Recipient")}>{document.recipientName || "-"}</td>
+                <td data-label={t("Issued At")}>{formatDate(document.issuedAt)}</td>
+                <td data-label={t("Status")}><StatusBadge status={document.status || "issued"} /></td>
+                <td data-label={t("Actions")} className="table-actions">
+                  <Link to={`/app/documents/${document.documentId}`} className="link-inline">{t("Detail")}</Link>
+                  <button className="btn btn-ghost" onClick={() => setRevokeModal({ open: true, documentId: document.documentId, reason: "" })}>{t("Revoke")}</button>
                 </td>
               </tr>
             )) : (
               <tr>
-                <td colSpan={6} data-label="Results">No documents match current filters.</td>
+                <td colSpan={6} data-label={t("Results")}>{t("No documents match current filters.")}</td>
               </tr>
             )}
           </tbody>
@@ -1283,15 +1234,15 @@ function DocumentsPage() {
       {revokeModal.open ? (
         <div className="modal-overlay" role="dialog" aria-modal="true">
           <article className="modal card">
-            <h3>Confirm Revocation</h3>
-            <p>Revoking this document will mark all future verification attempts as revoked.</p>
+            <h3>{t("Confirm Revocation")}</h3>
+            <p>{t("Revoking this document will mark all future verification attempts as revoked.")}</p>
             <label>
-              Revocation Reason
+              {t("Revocation Reason")}
               <textarea rows={3} value={revokeModal.reason} onChange={(event) => setRevokeModal((prev) => ({ ...prev, reason: event.target.value }))} />
             </label>
             <div className="action-row">
-              <button className="btn btn-ghost" onClick={() => setRevokeModal({ open: false, documentId: "", reason: "" })}>Cancel</button>
-              <button className="btn btn-primary" onClick={revokeDocument}>Confirm Revoke</button>
+              <button className="btn btn-ghost" onClick={() => setRevokeModal({ open: false, documentId: "", reason: "" })}>{t("Cancel")}</button>
+              <button className="btn btn-primary" onClick={revokeDocument}>{t("Confirm Revoke")}</button>
             </div>
           </article>
         </div>
@@ -1302,6 +1253,7 @@ function DocumentsPage() {
 
 function DocumentDetailPage() {
   const { token } = useAuth()
+  const { t } = useLanguage()
   const { documentId } = useParams()
   const [document, setDocument] = useState(null)
   const [versions, setVersions] = useState([])
@@ -1454,44 +1406,44 @@ function DocumentDetailPage() {
   }
 
   if (!document) {
-    return <section className="card">{error ? <ErrorState title="Document Error" body={error} /> : <PageLoading />}</section>
+    return <section className="card">{error ? <ErrorState title={t("Document Error")} body={error} /> : <PageLoading />}</section>
   }
 
   return (
     <div className="page-stack">
       <section className="card detail-header">
         <div>
-          <h2>{document.documentId || "Document Detail"}</h2>
-          <p>{document.title || "-"} - {document.issuerName || "Issuer"}</p>
+          <h2>{document.documentId || t("Document Detail")}</h2>
+          <p>{document.title || "-"} - {document.issuerName || t("Issuer")}</p>
         </div>
         <StatusBadge status={document.status || "issued"} large />
       </section>
 
       <section className="two-col-grid">
         <article className="card">
-          <h3>Metadata</h3>
+          <h3>{t("Metadata")}</h3>
           <dl className="meta-list">
             <div>
-              <dt>Recipient</dt>
+              <dt>{t("Recipient")}</dt>
               <dd>{document.recipientName || "-"}</dd>
             </div>
             <div>
-              <dt>Version</dt>
+              <dt>{t("Version")}</dt>
               <dd>v{document.versionNumber || 1}</dd>
             </div>
             <div>
-              <dt>Issued At</dt>
+              <dt>{t("Issued At")}</dt>
               <dd>{formatDate(document.issuedAt)}</dd>
             </div>
             <div>
-              <dt>Type</dt>
+              <dt>{t("Type")}</dt>
               <dd>{document.documentType || "-"}</dd>
             </div>
           </dl>
         </article>
 
         <article className="card">
-          <h3>Verification History</h3>
+          <h3>{t("Verification History")}</h3>
           <ul className="activity-list compact">
             {history.filter((entry) => String(entry.action || "").includes("VERIFIED")).slice(0, 6).map((entry) => (
               <li key={entry.entryId}>
@@ -1508,7 +1460,7 @@ function DocumentDetailPage() {
 
       <section className="two-col-grid">
         <article className="card">
-          <h3>Version Chain</h3>
+          <h3>{t("Version Chain")}</h3>
           <ul className="review-list">
             {versions.map((version) => (
               <li key={version.documentId}>{version.documentId} - v{version.versionNumber} - {formatDate(version.issuedAt)}</li>
@@ -1517,40 +1469,40 @@ function DocumentDetailPage() {
         </article>
 
         <article className="card">
-          <h3>QR Evidence</h3>
-          {qrCodeImage ? <img className="qr-image" src={qrCodeImage} alt="Document QR code" /> : null}
+          <h3>{t("QR Evidence")}</h3>
+          {qrCodeImage ? <img className="qr-image" src={qrCodeImage} alt={t("Document QR code")} /> : null}
           <div className="action-row">
-            <button className="btn btn-secondary" onClick={() => navigator.clipboard.writeText(JSON.stringify(document.qrPayload || {}, null, 2))}>Copy QR JSON</button>
-            <button className="btn btn-secondary" onClick={downloadQrPng} disabled={!qrCodeImage}>Download QR PNG</button>
+            <button className="btn btn-secondary" onClick={() => navigator.clipboard.writeText(JSON.stringify(document.qrPayload || {}, null, 2))}>{t("Copy QR JSON")}</button>
+            <button className="btn btn-secondary" onClick={downloadQrPng} disabled={!qrCodeImage}>{t("Download QR PNG")}</button>
           </div>
         </article>
       </section>
 
       <section className="card page-stack">
-        <h3>Actions</h3>
+        <h3>{t("Actions")}</h3>
         <div className="action-row">
-          <button className="btn btn-primary" onClick={downloadDocument}>Download Issued PDF</button>
-          <button className="btn btn-ghost" onClick={replaceDocument} disabled={!replaceFile}>Replace Document</button>
+          <button className="btn btn-primary" onClick={downloadDocument}>{t("Download Issued PDF")}</button>
+          <button className="btn btn-ghost" onClick={replaceDocument} disabled={!replaceFile}>{t("Replace Document")}</button>
         </div>
 
         <label>
-          Replacement PDF
+          {t("Replacement PDF")}
           <input type="file" accept="application/pdf" onChange={(event) => setReplaceFile(event.target.files?.[0] || null)} />
         </label>
 
         <label>
-          Revoke Reason
-          <input value={revokeReason} onChange={(event) => setRevokeReason(event.target.value)} placeholder="Provide reason for revocation" />
+          {t("Revoke Reason")}
+          <input value={revokeReason} onChange={(event) => setRevokeReason(event.target.value)} placeholder={t("Provide reason for revocation")} />
         </label>
-        <button className="btn btn-primary" onClick={revokeDocument}>Revoke Document</button>
+        <button className="btn btn-primary" onClick={revokeDocument}>{t("Revoke Document")}</button>
 
         {message ? <Toast message={message} /> : null}
-        {error ? <ErrorState title="Action Error" body={error} /> : null}
+        {error ? <ErrorState title={t("Action Error")} body={error} /> : null}
       </section>
 
       {document.qrPayload ? (
         <section className="card">
-          <h3>QR Payload</h3>
+          <h3>{t("QR Payload")}</h3>
           <pre className="code-block">{JSON.stringify(document.qrPayload, null, 2)}</pre>
         </section>
       ) : null}
@@ -1560,7 +1512,9 @@ function DocumentDetailPage() {
 
 function PublicVerificationPage() {
   const { token, isAuthenticated } = useAuth()
+  const { t } = useLanguage()
   const navigate = useNavigate()
+  const uploadInputRef = useRef(null)
   const [qrPayload, setQrPayload] = useState("")
   const [documentId, setDocumentId] = useState("")
   const [uploadFile, setUploadFile] = useState(null)
@@ -1590,7 +1544,7 @@ function PublicVerificationPage() {
 
   async function verifyUpload() {
     if (!uploadFile) {
-      setError("Select a PDF file")
+      setError(t("Select a PDF file"))
       return
     }
 
@@ -1628,14 +1582,14 @@ function PublicVerificationPage() {
     <div className="page-stack">
       <section className="verify-layout">
         <article className="card">
-          <h2>Scan QR Code</h2>
+          <h2>{t("Scan QR Code")}</h2>
           <div className="scan-frame">
             <div className="scan-corners" />
-            <p>Point camera at document QR</p>
+            <p>{t("Point camera at document QR")}</p>
           </div>
           <label>
-            Manual QR Payload Fallback
-            <textarea rows={7} value={qrPayload} onChange={(event) => setQrPayload(event.target.value)} placeholder="Paste QR payload" />
+            {t("Manual QR Payload Fallback")}
+            <textarea rows={7} value={qrPayload} onChange={(event) => setQrPayload(event.target.value)} placeholder={t("Paste QR payload")} />
           </label>
           <button
             className={busy && activeVerification === "qr" ? "btn btn-primary is-loading" : "btn btn-primary"}
@@ -1646,23 +1600,39 @@ function PublicVerificationPage() {
             {busy && activeVerification === "qr" ? (
               <>
                 <span className="btn-spinner" aria-hidden="true" />
-                <span>Verifying QR...</span>
+                <span>{t("Verifying QR...")}</span>
               </>
             ) : (
-              "Scan and Verify"
+              t("Scan and Verify")
             )}
           </button>
         </article>
 
         <article className="card">
-          <h2>Upload PDF for Verification</h2>
-          <label>
-            PDF File
-            <input type="file" accept="application/pdf" onChange={(event) => setUploadFile(event.target.files?.[0] || null)} />
+          <h2>{t("Upload PDF for Verification")}</h2>
+          <label className="file-picker-label">
+            {t("PDF File")}
+            <input
+              ref={uploadInputRef}
+              className="file-input-hidden"
+              type="file"
+              accept="application/pdf"
+              onChange={(event) => setUploadFile(event.target.files?.[0] || null)}
+            />
+            <div className="file-picker-row">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => uploadInputRef.current?.click()}
+              >
+                {t("Choose File")}
+              </button>
+              <span className="file-picker-name">{uploadFile?.name || t("No file selected")}</span>
+            </div>
           </label>
           <label>
-            Manual Document ID
-            <input value={documentId} onChange={(event) => setDocumentId(event.target.value)} placeholder="Manual document ID" />
+            {t("Manual Document ID")}
+            <input value={documentId} onChange={(event) => setDocumentId(event.target.value)} placeholder={t("Manual document ID")} />
           </label>
           <button
             className={busy && activeVerification === "upload" ? "btn btn-primary is-loading" : "btn btn-primary"}
@@ -1673,16 +1643,16 @@ function PublicVerificationPage() {
             {busy && activeVerification === "upload" ? (
               <>
                 <span className="btn-spinner" aria-hidden="true" />
-                <span>Verifying Upload...</span>
+                <span>{t("Verifying Upload...")}</span>
               </>
             ) : (
-              "Verify Document"
+              t("Verify Document")
             )}
           </button>
 
           {error ? (
             <div className="error-stack">
-              <ErrorState title="Verification Error" body={error} />
+              <ErrorState title={t("Verification Error")} body={error} />
             </div>
           ) : null}
         </article>
@@ -1690,16 +1660,16 @@ function PublicVerificationPage() {
 
       <section className="card tips-grid">
         <article>
-          <h4>Verification Tips</h4>
-          <p>Use original PDF exports to reduce parsing mismatches.</p>
+          <h4>{t("Verification Tips")}</h4>
+          <p>{t("Use original PDF exports to reduce parsing mismatches.")}</p>
         </article>
         <article>
-          <h4>Supported Files</h4>
-          <p>PDF only. Embedded images and scanned documents are supported.</p>
+          <h4>{t("Supported Files")}</h4>
+          <p>{t("PDF only. Embedded images and scanned documents are supported.")}</p>
         </article>
         <article>
-          <h4>Result Guide</h4>
-          <p>Verified, Tampered, Suspicious, Revoked, and Not Found states.</p>
+          <h4>{t("Result Guide")}</h4>
+          <p>{t("Verified, Tampered, Suspicious, Revoked, and Not Found states.")}</p>
         </article>
       </section>
     </div>
@@ -1708,6 +1678,7 @@ function PublicVerificationPage() {
 
 function VerificationResultPage() {
   const { token } = useAuth()
+  const { t } = useLanguage()
   const location = useLocation()
   const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search])
   const [payload, setPayload] = useState(() => location.state?.response || loadVerificationResultSnapshot() || null)
@@ -1812,7 +1783,7 @@ function VerificationResultPage() {
   if (!payload) {
     return (
       <section className="card">
-        <EmptyState title="No verification result" body="Run verification from /verify or open /result with attemptId/jobId query parameters." />
+        <EmptyState title={t("No verification result")} body={t("Run verification from /verify or open /result with attemptId/jobId query parameters.")} />
       </section>
     )
   }
@@ -1844,8 +1815,8 @@ function VerificationResultPage() {
   ].filter(Boolean)
   const decisionReasonLine =
     triggerLabels.length > 0
-      ? `Triggered by ${triggerLabels.join(", ")}`
-      : result.reason || result.resultMessage || "No detector trigger metadata was returned"
+      ? `${t("Triggered by")} ${triggerLabels.join(", ")}`
+      : result.reason || result.resultMessage || t("No detector trigger metadata was returned")
   const formatAsPercent = (value, decimals = 1) => {
     if (!Number.isFinite(value)) {
       return "-"
@@ -1896,7 +1867,7 @@ function VerificationResultPage() {
   const trustBandValue =
     result.trustBand ||
     (typeof result.trustScore === "object" && result.trustScore !== null ? result.trustScore.scoreBand : null) ||
-    "Band unavailable"
+    t("Band unavailable")
   const rectanglesByPage = result.tamperFindings?.rectanglesByPage || {}
   const tamperPages = [
     ...Object.keys(rectanglesByPage).map((value) => Number(value)).filter((value) => Number.isFinite(value) && value > 0),
@@ -1909,21 +1880,21 @@ function VerificationResultPage() {
       <section className="status-band tampered card">
         <div>
           <StatusBadge status={result.status || "pending"} large />
-          <p>{result.reason || result.resultMessage || "No reason provided by backend."}</p>
-          <p className="inline-note">Decision Basis: {decisionReasonLine}</p>
-          {pollError ? <ErrorState title="Job Polling Error" body={pollError} /> : null}
+          <p>{result.reason || result.resultMessage || t("No reason provided by backend.")}</p>
+          <p className="inline-note">{t("Decision Basis")}: {decisionReasonLine}</p>
+          {pollError ? <ErrorState title={t("Job Polling Error")} body={pollError} /> : null}
         </div>
         <dl>
           <div>
-            <dt>Document</dt>
+            <dt>{t("Document")}</dt>
             <dd>{resultDocumentId}</dd>
           </div>
           <div>
-            <dt>Issuer</dt>
+            <dt>{t("Issuer")}</dt>
             <dd>{resultIssuer}</dd>
           </div>
           <div>
-            <dt>Verified At</dt>
+            <dt>{t("Verified At")}</dt>
             <dd>{resultVerifiedAt}</dd>
           </div>
         </dl>
@@ -1932,55 +1903,55 @@ function VerificationResultPage() {
       <section className="result-grid">
         <div className="stacked-panel">
           <article className="card">
-            <h3>Document Metadata</h3>
+            <h3>{t("Document Metadata")}</h3>
             <dl className="meta-list">
               <div>
-                <dt>Document ID</dt>
+                <dt>{t("Document ID")}</dt>
                 <dd>{resultDocumentId}</dd>
               </div>
               <div>
-                <dt>Recipient</dt>
+                <dt>{t("Recipient")}</dt>
                 <dd>{resultRecipient}</dd>
               </div>
               <div>
-                <dt>Type</dt>
+                <dt>{t("Type")}</dt>
                 <dd>{resultType}</dd>
               </div>
               <div>
-                <dt>Issued Date</dt>
+                <dt>{t("Issued Date")}</dt>
                 <dd>{resultIssuedAt}</dd>
               </div>
               <div>
-                <dt>Status</dt>
+                <dt>{t("Status")}</dt>
                 <dd><StatusBadge status={result.status || "pending"} /></dd>
               </div>
             </dl>
           </article>
 
           <article className="card">
-            <h3>Issuer Trust</h3>
+            <h3>{t("Issuer Trust")}</h3>
             <p className="score-big">{trustScoreValue}</p>
             <p>{trustBandValue}</p>
-            <p>Score impact: +successful verifications, -tamper incidents</p>
+            <p>{t("Score impact: +successful verifications, -tamper incidents")}</p>
           </article>
 
           <article className="card">
-            <h3>Verification Findings</h3>
+            <h3>{t("Verification Findings")}</h3>
             <ul className="check-list">
-              <li>Reason Code: <strong>{result.reasonCode || result.resultReasonCode || "-"}</strong></li>
-              <li>OCR changed words: <strong>{ocrDiffSummary.changedWordCount || 0}</strong></li>
-              <li>OCR confidence: <strong>{formatAsPercent(ocrDiffSummary.confidence, 0)}</strong></li>
-              <li>Visual diff peak: <strong>{visualPeakPercent}%</strong></li>
+              <li>{t("Reason Code")}: <strong>{result.reasonCode || result.resultReasonCode || "-"}</strong></li>
+              <li>{t("OCR changed words")}: <strong>{ocrDiffSummary.changedWordCount || 0}</strong></li>
+              <li>{t("OCR confidence")}: <strong>{formatAsPercent(ocrDiffSummary.confidence, 0)}</strong></li>
+              <li>{t("Visual diff peak")}: <strong>{visualPeakPercent}%</strong></li>
             </ul>
             <div className="detector-chip-row">
-              <DetectorChip label="Text Layer" active={detectors.textLayerChanged} />
-              <DetectorChip label="OCR Layer" active={detectors.ocrLayerChanged} />
-              <DetectorChip label="Visual Layer" active={detectors.visualLayerChanged} />
+              <DetectorChip label={t("Text Layer")} active={detectors.textLayerChanged} />
+              <DetectorChip label={t("OCR Layer")} active={detectors.ocrLayerChanged} />
+              <DetectorChip label={t("Visual Layer")} active={detectors.visualLayerChanged} />
             </div>
           </article>
 
           <article className="card">
-            <h3>Detector Evidence</h3>
+            <h3>{t("Detector Evidence")}</h3>
             <div className="verification-stats-grid">
               <MetricBar label="Outcome Confidence" value={outcomeScore} tone={normalizedStatus === "verified" ? "good" : normalizedStatus === "tampered" ? "risk" : "neutral"} helper={normalizedStatus || "pending"} />
               <MetricBar label="Detector Trigger Rate" value={detectorTriggerRate} tone={detectorTriggerRate >= 67 ? "risk" : detectorTriggerRate >= 34 ? "warn" : "good"} helper={`${detectorHitCount} of 3 detectors triggered`} />
@@ -1991,7 +1962,7 @@ function VerificationResultPage() {
               <div className="detector-score-grid">
                 {visualDiffScoreByPage.map((entry) => (
                   <article key={entry.pageNumber} className="detector-score-card">
-                    <strong>Page {entry.pageNumber}</strong>
+                    <strong>{t("Page")} {entry.pageNumber}</strong>
                     <span>{formatAsPercent(entry.score, 1)}</span>
                   </article>
                 ))}
@@ -2003,10 +1974,10 @@ function VerificationResultPage() {
         <article className="card viewer-card">
           <div className="viewer-toolbar">
             <div className="action-row compact-actions">
-              <strong>Tamper Overlay Preview</strong>
+              <strong>{t("Tamper Overlay Preview")}</strong>
             </div>
             <div className="action-row compact-actions">
-              <span>{uniqueTamperPages.length ? `${uniqueTamperPages.length} impacted page(s)` : "No impacted pages"}</span>
+              <span>{uniqueTamperPages.length ? `${uniqueTamperPages.length} ${t("impacted page(s)")}` : t("No impacted pages")}</span>
             </div>
           </div>
 
@@ -2018,13 +1989,13 @@ function VerificationResultPage() {
           />
 
           <div className="finding-list">
-            <h4>Tampered Sections</h4>
+            <h4>{t("Tampered Sections")}</h4>
             {uniqueTamperPages.length ? uniqueTamperPages.map((page) => (
               <p key={page} className="finding-btn">
-                Page {page}
-                {changedPagesWithoutBoxes.includes(page) ? " flagged by visual diff without box geometry" : " contains detector evidence"}
+                {t("Page")} {page}
+                {changedPagesWithoutBoxes.includes(page) ? ` ${t("flagged by visual diff without box geometry")}` : ` ${t("contains detector evidence")}`}
               </p>
-            )) : <p className="inline-note">No altered regions were returned in this result.</p>}
+            )) : <p className="inline-note">{t("No altered regions were returned in this result.")}</p>}
           </div>
         </article>
       </section>
@@ -2055,6 +2026,7 @@ function MetricBar({ label, value, helper, tone = "neutral" }) {
 }
 
 function VerificationVisualPreview({ uploadedFile, rectanglesByPage, flaggedPages = [], status }) {
+  const { t } = useLanguage()
   const [renderedPages, setRenderedPages] = useState([])
   const [error, setError] = useState("")
 
@@ -2240,7 +2212,7 @@ function VerificationVisualPreview({ uploadedFile, rectanglesByPage, flaggedPage
         }
 
         setRenderedPages([])
-        setError(renderError.message || "Could not render tamper highlights")
+        setError(renderError.message || t("Could not render tamper highlights"))
       }
     }
 
@@ -2252,11 +2224,11 @@ function VerificationVisualPreview({ uploadedFile, rectanglesByPage, flaggedPage
   }, [uploadedFile, rectanglesByPage, flaggedPages, status, buildFallbackPreviews])
 
   if (!uploadedFile) {
-    return <p className="inline-note">Visual preview appears for upload verification results in the same session. For QR-only verification there is no uploaded file preview.</p>
+    return <p className="inline-note">{t("Visual preview appears for upload verification results in the same session. For QR-only verification there is no uploaded file preview.")}</p>
   }
 
   if (error) {
-    return <ErrorState title="Tamper Overlay Error" body={error} />
+    return <ErrorState title={t("Tamper Overlay Error")} body={error} />
   }
 
   if (!renderedPages.length) {
@@ -2267,18 +2239,18 @@ function VerificationVisualPreview({ uploadedFile, rectanglesByPage, flaggedPage
     <div className="page-stack">
       <p className="inline-note">
         {String(status || "").toLowerCase() === "tampered"
-          ? "Red overlays show changed regions detected in the uploaded PDF."
-          : "Green border indicates no explicit changed regions were highlighted for this result."}
+          ? t("Red overlays show changed regions detected in the uploaded PDF.")
+          : t("Green border indicates no explicit changed regions were highlighted for this result.")}
       </p>
       <div className="tamper-preview-grid">
       {renderedPages.map((page) => (
         <article key={page.pageNumber} className="tamper-preview-card">
           <div className="tamper-preview-head">
-            <strong>Page {page.pageNumber}</strong>
-            <span>{page.visualOnlyFlagged ? "visual diff flagged" : `${page.changedCount} changes`}</span>
+            <strong>{t("Page")} {page.pageNumber}</strong>
+            <span>{page.visualOnlyFlagged ? t("visual diff flagged") : `${page.changedCount} ${t("changes")}`}</span>
           </div>
-          {page.visualOnlyFlagged ? <p className="inline-note">Page {page.pageNumber} flagged by visual diff without box geometry.</p> : null}
-          <img src={page.imageUrl} alt={`Tamper highlights for page ${page.pageNumber}`} />
+          {page.visualOnlyFlagged ? <p className="inline-note">{t("Page")} {page.pageNumber} {t("flagged by visual diff without box geometry")}</p> : null}
+          <img src={page.imageUrl} alt={`${t("Tamper highlights for page")} ${page.pageNumber}`} />
         </article>
       ))}
       </div>
@@ -2288,6 +2260,7 @@ function VerificationVisualPreview({ uploadedFile, rectanglesByPage, flaggedPage
 
 function VerificationActivityPage() {
   const { token } = useAuth()
+  const { t } = useLanguage()
   const [entries, setEntries] = useState([])
   const [error, setError] = useState("")
   const [query, setQuery] = useState("")
@@ -2304,7 +2277,7 @@ function VerificationActivityPage() {
         setEntries((response.data || []).filter((entry) => entry.action?.includes("VERIFIED")))
       } catch (loadError) {
         if (!active) return
-        setError(loadError.message || "Could not load verification activity")
+        setError(loadError.message || t("Could not load verification activity"))
       }
     }
 
@@ -2341,65 +2314,65 @@ function VerificationActivityPage() {
   return (
     <div className="page-stack">
       <section className="card filter-toolbar">
-        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Attempt ID or Document ID" />
+        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("Attempt ID or Document ID")} />
         <select value={methodFilter} onChange={(event) => setMethodFilter(event.target.value)}>
-          <option value="all">Method</option>
+          <option value="all">{t("Method")}</option>
           <option value="qr">QR</option>
-          <option value="upload">Upload</option>
+          <option value="upload">{t("Upload")}</option>
         </select>
         <select value={resultFilter} onChange={(event) => setResultFilter(event.target.value)}>
-          <option value="all">Result</option>
-          <option value="verified">Verified</option>
-          <option value="tampered">Tampered</option>
-          <option value="suspicious">Suspicious</option>
-          <option value="revoked">Revoked</option>
+          <option value="all">{t("Result")}</option>
+          <option value="verified">{t("Verified")}</option>
+          <option value="tampered">{t("Tampered")}</option>
+          <option value="suspicious">{t("Suspicious")}</option>
+          <option value="revoked">{t("Revoked")}</option>
         </select>
       </section>
 
       <section className="kpi-grid">
         <article className="card kpi-card">
-          <p>Total Attempts</p>
+          <p>{t("Total Attempts")}</p>
           <h3>{verificationEntries.length}</h3>
         </article>
         <article className="card kpi-card">
-          <p>Verified Attempts</p>
+          <p>{t("Verified Attempts")}</p>
           <h3>{verifiedAttempts}</h3>
         </article>
         <article className="card kpi-card">
-          <p>Tampered Attempts</p>
+          <p>{t("Tampered Attempts")}</p>
           <h3>{tamperedAttempts}</h3>
         </article>
         <article className="card kpi-card">
-          <p>Suspicious Attempts</p>
+          <p>{t("Suspicious Attempts")}</p>
           <h3>{suspiciousAttempts}</h3>
         </article>
       </section>
 
       <section className="card page-stack">
-        <h3>Verification Activity</h3>
-        {error ? <ErrorState title="Activity Error" body={error} /> : null}
+        <h3>{t("Verification Activity")}</h3>
+        {error ? <ErrorState title={t("Activity Error")} body={error} /> : null}
         <table className="data-table">
           <thead>
             <tr>
-              <th>Attempt ID</th>
-              <th>Document ID</th>
-              <th>Method</th>
-              <th>Result</th>
-              <th>Time</th>
+              <th>{t("Attempt ID")}</th>
+              <th>{t("Document ID")}</th>
+              <th>{t("Method")}</th>
+              <th>{t("Result")}</th>
+              <th>{t("Time")}</th>
             </tr>
           </thead>
           <tbody>
             {filteredEntries.length ? filteredEntries.map((entry) => (
               <tr key={entry.entryId}>
-                <td data-label="Attempt ID">{entry.entryId || `SEQ-${entry.sequenceNumber}`}</td>
-                <td data-label="Document ID">{entry.documentId || "-"}</td>
-                <td data-label="Method">{entry.method}</td>
-                <td data-label="Result"><StatusBadge status={entry.result} /></td>
-                <td data-label="Time">{formatDate(entry.timestamp)}</td>
+                <td data-label={t("Attempt ID")}>{entry.entryId || `SEQ-${entry.sequenceNumber}`}</td>
+                <td data-label={t("Document ID")}>{entry.documentId || "-"}</td>
+                <td data-label={t("Method")}>{entry.method === "Upload" ? t("Upload") : entry.method}</td>
+                <td data-label={t("Result")}><StatusBadge status={entry.result} /></td>
+                <td data-label={t("Time")}>{formatDate(entry.timestamp)}</td>
               </tr>
             )) : (
               <tr>
-                <td colSpan={5} data-label="Results">No verification attempts match current filters.</td>
+                <td colSpan={5} data-label={t("Results")}>{t("No verification attempts match current filters.")}</td>
               </tr>
             )}
           </tbody>
@@ -2411,6 +2384,7 @@ function VerificationActivityPage() {
 
 function AuditLogPage() {
   const { token } = useAuth()
+  const { t } = useLanguage()
   const [entries, setEntries] = useState([])
   const [chainResult, setChainResult] = useState(null)
   const [snapshotBusy, setSnapshotBusy] = useState(false)
@@ -2444,7 +2418,7 @@ function AuditLogPage() {
         setError("")
       } catch (loadError) {
         if (!active) return
-        setError(loadError.message || "Could not load audit logs")
+        setError(loadError.message || t("Could not load audit logs"))
       }
     }
 
@@ -2606,7 +2580,7 @@ function AuditLogPage() {
       })
 
       if (!response.ok) {
-        throw new Error("Could not download document PDF")
+        throw new Error(t("Could not download document PDF"))
       }
 
       const blob = await response.blob()
@@ -2635,7 +2609,7 @@ function AuditLogPage() {
       const qrPayload = await resolveEntryQrPayload(selectedEntry)
 
       if (!qrPayload) {
-        throw new Error("No QR payload available for selected entry")
+        throw new Error(t("No QR payload available for selected entry"))
       }
 
       downloadJsonFile({
@@ -2661,7 +2635,7 @@ function AuditLogPage() {
       const qrPayload = await resolveEntryQrPayload(selectedEntry)
 
       if (!qrPayload) {
-        throw new Error("No QR payload available for selected entry")
+        throw new Error(t("No QR payload available for selected entry"))
       }
 
       const image = await QRCode.toDataURL(JSON.stringify(qrPayload), { width: 280, margin: 1 })
@@ -2696,127 +2670,127 @@ function AuditLogPage() {
   const uniqueDocumentCount = new Set(entries.map((entry) => entry.documentId).filter(Boolean)).size
   const verificationEventCount = entries.filter((entry) => String(entry.action || "").includes("VERIFIED")).length
   const integrityIssueCount = entries.filter((entry) => String(entry.integrityStatus || "valid") !== "valid").length
-  const chainStatusLabel = chainResult ? (chainResult.isValid ? "Healthy" : "Issue detected") : "Unknown"
+  const chainStatusLabel = chainResult ? (chainResult.isValid ? t("Healthy") : t("Issue detected")) : t("Unknown")
   const lastIntegrityCheckAt = chainResult?.checkedAt || entries[0]?.timestamp || null
 
   return (
     <div className="page-stack">
       <section className="card filter-toolbar">
         <select value={actionFilter} onChange={(event) => setActionFilter(event.target.value)}>
-          <option value="all">Action Type</option>
-          <option value="issue">Issue</option>
-          <option value="verify">Verify</option>
-          <option value="revoke">Revoke</option>
-          <option value="replace">Replace</option>
+          <option value="all">{t("Action Type")}</option>
+          <option value="issue">{t("Issue")}</option>
+          <option value="verify">{t("Verify")}</option>
+          <option value="revoke">{t("Revoke")}</option>
+          <option value="replace">{t("Replace")}</option>
         </select>
-        <input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} aria-label="Date from" />
-        <input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} aria-label="Date to" />
-        <input value={documentFilter} onChange={(event) => setDocumentFilter(event.target.value)} placeholder="Document ID" />
+        <input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} aria-label={t("Date from")} />
+        <input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} aria-label={t("Date to")} />
+        <input value={documentFilter} onChange={(event) => setDocumentFilter(event.target.value)} placeholder={t("Document ID")} />
         <select value={integrityFilter} onChange={(event) => setIntegrityFilter(event.target.value)}>
-          <option value="all">Integrity Status</option>
-          <option value="valid">Healthy</option>
-          <option value="warning">Warning</option>
-          <option value="invalid">Invalid</option>
+          <option value="all">{t("Integrity Status")}</option>
+          <option value="valid">{t("Healthy")}</option>
+          <option value="warning">{t("Warning")}</option>
+          <option value="invalid">{t("Invalid")}</option>
         </select>
       </section>
 
       <section className="chain-summary-grid">
         <article className="card">
-          <p>Current Chain Status</p>
+          <p>{t("Current Chain Status")}</p>
           <h3>{chainStatusLabel}</h3>
         </article>
         <article className="card">
-          <p>Last Integrity Verification</p>
+          <p>{t("Last Integrity Verification")}</p>
           <h3>{formatDate(lastIntegrityCheckAt)}</h3>
         </article>
         <article className="card">
-          <p>Total Entries</p>
+          <p>{t("Total Entries")}</p>
           <h3>{entries.length}</h3>
         </article>
       </section>
 
       <section className="card page-stack">
         <div className="section-head">
-          <h3>Immutable Audit Ledger</h3>
+          <h3>{t("Immutable Audit Ledger")}</h3>
           <div className="action-row">
-            <button className="btn btn-secondary" onClick={verifyChain}>Verify Chain</button>
+            <button className="btn btn-secondary" onClick={verifyChain}>{t("Verify Chain")}</button>
             <button className="btn btn-primary" onClick={exportSnapshot} disabled={snapshotBusy}>
-              {snapshotBusy ? "Exporting..." : "Export Signed Snapshot"}
+              {snapshotBusy ? t("Exporting...") : t("Export Signed Snapshot")}
             </button>
           </div>
         </div>
 
-        <p className="inline-note">Every issuance and verification event is chained by sequence, previous hash, and current hash for traceable evidence.</p>
+        <p className="inline-note">{t("Every issuance and verification event is chained by sequence, previous hash, and current hash for traceable evidence.")}</p>
 
         <section className="kpi-grid">
           <article className="card kpi-card">
-            <p>Total Events</p>
+            <p>{t("Total Events")}</p>
             <h3>{entries.length}</h3>
           </article>
           <article className="card kpi-card">
-            <p>Documents Referenced</p>
+            <p>{t("Documents Referenced")}</p>
             <h3>{uniqueDocumentCount}</h3>
           </article>
           <article className="card kpi-card">
-            <p>Verification Events</p>
+            <p>{t("Verification Events")}</p>
             <h3>{verificationEventCount}</h3>
           </article>
           <article className="card kpi-card">
-            <p>Integrity Alerts</p>
+            <p>{t("Integrity Alerts")}</p>
             <h3>{integrityIssueCount}</h3>
           </article>
         </section>
 
-        {error ? <ErrorState title="Audit Error" body={error} /> : null}
-        {snapshotError ? <ErrorState title="Snapshot Export Error" body={snapshotError} /> : null}
+        {error ? <ErrorState title={t("Audit Error")} body={error} /> : null}
+        {snapshotError ? <ErrorState title={t("Snapshot Export Error")} body={snapshotError} /> : null}
         {snapshotMessage ? <Toast message={snapshotMessage} /> : null}
 
         <label>
-          Search events
+          {t("Search events")}
           <input
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder="Filter by seq, action, actor, document ID, hash, or payload"
+            placeholder={t("Filter by seq, action, actor, document ID, hash, or payload")}
           />
         </label>
 
         <section className="card soft page-stack">
-        <h4>Selected Audit Entry Actions</h4>
+        <h4>{t("Selected Audit Entry Actions")}</h4>
         <p className="inline-note">
           {selectedEntry
-            ? `Selected #${selectedEntry.sequenceNumber} (${selectedEntry.action})`
-            : "Select an audit row below to enable targeted downloads."}
+            ? `${t("Selected")} #${selectedEntry.sequenceNumber} (${selectedEntry.action})`
+            : t("Select an audit row below to enable targeted downloads.")}
         </p>
         <div className="action-row">
           <button className="btn btn-secondary" onClick={downloadSelectedEntryJson} disabled={!selectedEntry || entryActionBusy}>
-            Download Entry JSON
+            {t("Download Entry JSON")}
           </button>
           <button className="btn btn-secondary" onClick={downloadSelectedDocumentPdf} disabled={!selectedEntry?.documentId || entryActionBusy}>
-            Download Selected PDF
+            {t("Download Selected PDF")}
           </button>
           <button className="btn btn-secondary" onClick={downloadSelectedQrJson} disabled={!selectedEntry || entryActionBusy}>
-            Download QR JSON
+            {t("Download QR JSON")}
           </button>
           <button className="btn btn-secondary" onClick={downloadSelectedQrPng} disabled={!selectedEntry || entryActionBusy}>
-            Download QR PNG
+            {t("Download QR PNG")}
           </button>
         </div>
-        {entryActionError ? <ErrorState title="Entry Action Error" body={entryActionError} /> : null}
+        {entryActionError ? <ErrorState title={t("Entry Action Error")} body={entryActionError} /> : null}
         {entryActionMessage ? <Toast message={entryActionMessage} /> : null}
-        {selectedQrImage ? <img className="qr-image" src={selectedQrImage} alt="Selected entry QR" /> : null}
+        {selectedQrImage ? <img className="qr-image" src={selectedQrImage} alt={t("Selected entry QR")} /> : null}
       </section>
 
       <table className="data-table">
         <thead>
           <tr>
-            <th>Select</th>
-            <th>Seq</th>
-            <th>Action</th>
-            <th>Document</th>
-            <th>Actor</th>
-            <th>Hash Proof</th>
-            <th>Integrity</th>
-            <th>Timestamp</th>
+            <th>{t("Select")}</th>
+            <th>{t("Seq")}</th>
+            <th>{t("Action")}</th>
+            <th>{t("Document")}</th>
+            <th>{t("Actor")}</th>
+            <th>{t("Hash Proof")}</th>
+            <th>{t("Integrity")}</th>
+            <th>{t("Timestamp")}</th>
           </tr>
         </thead>
         <tbody>
@@ -2826,7 +2800,7 @@ function AuditLogPage() {
               className={entry.entryId === selectedEntryId ? "selected-row" : ""}
               onClick={() => setSelectedEntryId(entry.entryId)}
             >
-              <td data-label="Select">
+              <td data-label={t("Select")}>
                 <input
                   type="radio"
                   name="selected-audit-entry"
@@ -2835,17 +2809,17 @@ function AuditLogPage() {
                   onClick={(event) => event.stopPropagation()}
                 />
               </td>
-              <td data-label="Seq">{entry.sequenceNumber}</td>
-              <td data-label="Action">{entry.action}</td>
-              <td data-label="Document">{entry.documentId || "-"}</td>
-              <td data-label="Actor">{entry.actorType || "-"}</td>
-              <td data-label="Hash Proof">{shortHash(entry.currentEntryHash)}</td>
-              <td data-label="Integrity">{entry.integrityStatus || "valid"}</td>
-              <td data-label="Timestamp">{formatDate(entry.timestamp)}</td>
+              <td data-label={t("Seq")}>{entry.sequenceNumber}</td>
+              <td data-label={t("Action")}>{entry.action}</td>
+              <td data-label={t("Document")}>{entry.documentId || "-"}</td>
+              <td data-label={t("Actor")}>{entry.actorType || "-"}</td>
+              <td data-label={t("Hash Proof")}>{shortHash(entry.currentEntryHash)}</td>
+              <td data-label={t("Integrity")}>{entry.integrityStatus || "valid"}</td>
+              <td data-label={t("Timestamp")}>{formatDate(entry.timestamp)}</td>
             </tr>
           )) : (
             <tr>
-              <td colSpan={8} data-label="Results">No audit entries match your search.</td>
+              <td colSpan={8} data-label={t("Results")}>{t("No audit entries match your search.")}</td>
             </tr>
           )}
         </tbody>
@@ -2857,6 +2831,7 @@ function AuditLogPage() {
 
 function TrustScorePage() {
   const { token, profile } = useAuth()
+  const { t } = useLanguage()
   const [trust, setTrust] = useState(null)
   const [history, setHistory] = useState([])
   const [error, setError] = useState("")
@@ -2878,7 +2853,7 @@ function TrustScorePage() {
         setHistory(historyResponse.data || [])
       } catch (loadError) {
         if (!active) return
-        setError(loadError.message || "Could not load trust score")
+        setError(loadError.message || t("Could not load trust score"))
       }
     }
 
@@ -2894,7 +2869,7 @@ function TrustScorePage() {
     Number(trust?.metrics?.tamperedDetections || 0) > 0 ||
     Number(trust?.metrics?.revokedDocuments || 0) > 0
   const displayScore = hasTrustActivity ? trust?.currentScore ?? "-" : "-"
-  const displayBand = hasTrustActivity ? trust?.scoreBand || "-" : "Not Rated"
+  const displayBand = hasTrustActivity ? trust?.scoreBand || "-" : t("Not Rated")
   const scoreTrend = history.length > 1
     ? Number(history[history.length - 1]?.newScore || 0) - Number(history[Math.max(0, history.length - 2)]?.newScore || 0)
     : 0
@@ -2906,29 +2881,29 @@ function TrustScorePage() {
     <div className="page-stack">
       <section className="trust-top-grid">
         <article className="card trust-score-card">
-          <p>Current Score</p>
+          <p>{t("Current Score")}</p>
           <h2>{displayScore}</h2>
           <p>{displayBand}</p>
-          <p>Trend: {scoreTrend >= 0 ? "+" : ""}{scoreTrend.toFixed(1)} from latest event</p>
+          <p>{t("Trend")}: {scoreTrend >= 0 ? "+" : ""}{scoreTrend.toFixed(1)} {t("from latest event")}</p>
         </article>
 
         <article className="card">
-          <h3>Formula Breakdown</h3>
+          <h3>{t("Formula Breakdown")}</h3>
           <ul className="formula-list">
             <li>
-              <span>Base score</span>
+              <span>{t("Base score")}</span>
               <strong>{Number(trust?.baseScore || 0).toFixed(1)}</strong>
             </li>
             <li>
-              <span>Issuer age contribution</span>
+              <span>{t("Issuer age contribution")}</span>
               <strong>{Number(trustMetrics.issuerAgeContribution || 0).toFixed(1)}</strong>
             </li>
             <li>
-              <span>Successful verification contribution</span>
+              <span>{t("Successful verification contribution")}</span>
               <strong>{Number(trustMetrics.successfulVerificationContribution || 0).toFixed(1)}</strong>
             </li>
             <li>
-              <span>Verification volume contribution</span>
+              <span>{t("Verification volume contribution")}</span>
               <strong>{Number(trustMetrics.verificationVolumeContribution || 0).toFixed(1)}</strong>
             </li>
           </ul>
@@ -2936,8 +2911,8 @@ function TrustScorePage() {
       </section>
 
       <section className="card">
-        <h3>Score History</h3>
-        {error ? <ErrorState title="Trust Error" body={error} /> : null}
+        <h3>{t("Score History")}</h3>
+        {error ? <ErrorState title={t("Trust Error")} body={error} /> : null}
         <div className="history-chart">
           {recentHistory.length ? recentHistory.map((item, index) => {
             const value = Number(item.newScore || 0)
@@ -2948,7 +2923,7 @@ function TrustScorePage() {
                 <small>{index + 1}</small>
               </div>
             )
-          }) : <p className="inline-note">No trust history yet</p>}
+          }) : <p className="inline-note">{t("No trust history yet")}</p>}
         </div>
       </section>
     </div>
@@ -2957,6 +2932,7 @@ function TrustScorePage() {
 
 function ProfilePage() {
   const { token, profile, refreshProfile } = useAuth()
+  const { t } = useLanguage()
   const [form, setForm] = useState({
     displayName: "",
     contactPhone: "",
@@ -3000,59 +2976,59 @@ function ProfilePage() {
       })
 
       await refreshProfile()
-      setMessage("Profile updated")
+      setMessage(t("Profile updated"))
     } catch (saveError) {
-      setError(saveError.message || "Could not update profile")
+      setError(saveError.message || t("Could not update profile"))
     } finally {
       setBusy(false)
     }
   }
 
   return (
-    <div className="page-stack">
+    <div className="page-stack profile-page">
       <section className="card">
-        <h3>Institution Profile</h3>
+        <h3>{t("Institution Profile")}</h3>
         <form className="form-grid two-col-form" onSubmit={(event) => {
           event.preventDefault()
           void save()
         }}>
           <label>
-            Institution Name
+            {t("Institution Name")}
             <input value={form.institutionName} onChange={(event) => setForm((prev) => ({ ...prev, institutionName: event.target.value }))} />
           </label>
           <label>
-            Primary Domain
+            {t("Primary Domain")}
             <input value={form.primaryDomain} onChange={(event) => setForm((prev) => ({ ...prev, primaryDomain: event.target.value }))} />
           </label>
           <label>
-            Verification Contact Email
+            {t("Verification Contact Email")}
             <input value={form.verificationContactEmail} onChange={(event) => setForm((prev) => ({ ...prev, verificationContactEmail: event.target.value }))} />
           </label>
           <label>
-            Time Zone
+            {t("Time Zone")}
             <select value={form.timeZone} onChange={(event) => setForm((prev) => ({ ...prev, timeZone: event.target.value }))}>
               <option value="UTC">UTC</option>
               <option value="IST">IST</option>
             </select>
           </label>
           <label>
-            Display Name
+            {t("Display Name")}
             <input value={form.displayName} onChange={(event) => setForm((prev) => ({ ...prev, displayName: event.target.value }))} />
           </label>
           <label>
-            Contact Phone
+            {t("Contact Phone")}
             <input value={form.contactPhone} onChange={(event) => setForm((prev) => ({ ...prev, contactPhone: event.target.value }))} />
           </label>
           <label>
-            Institution Type
+            {t("Institution Type")}
             <input value={form.institutionType} onChange={(event) => setForm((prev) => ({ ...prev, institutionType: event.target.value }))} />
           </label>
-          <button type="submit" className="btn btn-primary" disabled={busy}>{busy ? "Saving..." : "Save Profile"}</button>
+          <button type="submit" className="btn btn-primary" disabled={busy}>{busy ? t("Saving...") : t("Save Profile")}</button>
         </form>
       </section>
 
       <section className="card">
-        <h3>Status System</h3>
+        <h3>{t("Status System")}</h3>
         <div className="status-grid">
           <StatusBadge status="verified" />
           <StatusBadge status="tampered" />
@@ -3064,20 +3040,8 @@ function ProfilePage() {
         </div>
       </section>
 
-      <section className="card states-library">
-        <h3>Error and Empty States</h3>
-        <div className="inline-grid">
-          <ErrorState title="Unauthorized access" body="Your role does not allow this operation." />
-          <ErrorState title="Invalid QR payload" body="Malformed signature payload." />
-        </div>
-        <div className="inline-grid">
-          <EmptyState title="No tamper findings" body="No alterations were detected in this verification." compact />
-          <EmptyState title="No trust history yet" body="Trust timeline is generated after baseline activity." compact />
-        </div>
-      </section>
-
       {message ? <Toast message={message} /> : null}
-      {error ? <ErrorState title="Profile Error" body={error} /> : null}
+      {error ? <ErrorState title={t("Profile Error")} body={error} /> : null}
     </div>
   )
 }
@@ -3118,25 +3082,28 @@ function StatusBadge({ status, large = false }) {
 }
 
 function EmptyState({ title, body, compact = false }) {
+  const { t } = useLanguage()
   return (
     <article className={`empty-state ${compact ? "compact" : ""}`.trim()}>
-      <h4>{title}</h4>
-      <p>{body}</p>
+      <h4>{t(title || "")}</h4>
+      <p>{t(body || "No data available.")}</p>
     </article>
   )
 }
 
 function ErrorState({ title, body }) {
+  const { t } = useLanguage()
   return (
     <article className="error-state">
-      <h4>{title}</h4>
-      <p>{body}</p>
+      <h4>{t(title || "Something went wrong")}</h4>
+      <p>{t(body || "")}</p>
     </article>
   )
 }
 
 function Toast({ message }) {
-  return <div className="toast success">{message}</div>
+  const { t } = useLanguage()
+  return <div className="toast success">{t(message || "Updated")}</div>
 }
 
 function formatDate(value) {
