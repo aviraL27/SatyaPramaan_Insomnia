@@ -74,25 +74,25 @@ flowchart LR
 
 ```mermaid
 flowchart TB
-    APP[src/server.js -> src/app.js]
+    APP["src/server.js -> src/app.js"]
 
     subgraph Routes
-      AUTH[/api/v1/auth]
-      USERS[/api/v1/users]
-      INST[/api/v1/institutions]
-      DOCS[/api/v1/documents]
-      VERIFY[/api/v1/verify + upload-verify]
-      TRUST[/api/v1/trust-score]
-      AUDIT[/api/v1/audit-ledger]
-      ADMIN[/api/v1/admin]
+      AUTH["/api/v1/auth"]
+      USERS["/api/v1/users"]
+      INST["/api/v1/institutions"]
+      DOCS["/api/v1/documents"]
+      VERIFY["/api/v1/verify + upload-verify"]
+      TRUST["/api/v1/trust-score"]
+      AUDIT["/api/v1/audit-ledger"]
+      ADMIN["/api/v1/admin"]
     end
 
     subgraph Services
-      CACHE[src/cache]
-      CRYPTO[src/crypto]
-      PDF[src/pdf-pipeline]
-      MODELS[src/models]
-      WORKERS[src/workers]
+      CACHE["src/cache"]
+      CRYPTO["src/crypto"]
+      PDF["src/pdf-pipeline"]
+      MODELS["src/models"]
+      WORKERS["src/workers"]
     end
 
     APP --> AUTH
