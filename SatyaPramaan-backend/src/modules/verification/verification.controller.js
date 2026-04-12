@@ -2,15 +2,16 @@ const { z } = require("zod");
 const { asyncHandler } = require("../../utils/asyncHandler");
 const verificationService = require("./verification.service");
 
-function extractFirstJsonObjectSegment(input) {
+function extractJsonObjectSegments(input) {
   if (typeof input !== "string") {
-    return null;
+    return [];
   }
 
   let depth = 0;
   let start = -1;
   let inString = false;
   let escaped = false;
+  const segments = [];
 
   for (let index = 0; index < input.length; index += 1) {
     const char = input[index];
@@ -44,12 +45,13 @@ function extractFirstJsonObjectSegment(input) {
       depth -= 1;
 
       if (depth === 0 && start >= 0) {
-        return input.slice(start, index + 1);
+        segments.push(input.slice(start, index + 1));
+        start = -1;
       }
     }
   }
 
-  return null;
+  return segments;
 }
 
 function parsePossiblyRepeatedJson(raw) {
@@ -71,10 +73,14 @@ function parsePossiblyRepeatedJson(raw) {
     }
   }
 
-  const firstJsonObject = extractFirstJsonObjectSegment(input);
-  if (firstJsonObject && firstJsonObject !== input) {
-    candidates.push(firstJsonObject);
+  const objectSegments = extractJsonObjectSegments(input);
+  for (const segment of objectSegments) {
+    if (segment && segment !== input) {
+      candidates.push(segment);
+    }
   }
+
+  let lastParsed = null;
 
   for (const candidate of candidates) {
     try {
@@ -86,10 +92,14 @@ function parsePossiblyRepeatedJson(raw) {
         }
       }
 
-      return parsed;
+      lastParsed = parsed;
     } catch (_error) {
       // Keep trying other candidates.
     }
+  }
+
+  if (lastParsed !== null) {
+    return lastParsed;
   }
 
   return raw;

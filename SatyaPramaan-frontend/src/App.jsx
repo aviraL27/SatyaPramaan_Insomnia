@@ -80,13 +80,14 @@ function loadVerificationResultSnapshot() {
   }
 }
 
-function extractFirstJsonObjectSegment(input) {
-  if (typeof input !== "string") return null
+function extractJsonObjectSegments(input) {
+  if (typeof input !== "string") return []
 
   let depth = 0
   let start = -1
   let inString = false
   let escaped = false
+  const segments = []
 
   for (let index = 0; index < input.length; index += 1) {
     const char = input[index]
@@ -119,13 +120,40 @@ function extractFirstJsonObjectSegment(input) {
       if (depth > 0) {
         depth -= 1
         if (depth === 0 && start >= 0) {
-          return input.slice(start, index + 1)
+          segments.push(input.slice(start, index + 1))
+          start = -1
         }
       }
     }
   }
 
-  return null
+  return segments
+}
+
+function isLikelyQrPayload(value) {
+  if (!value || typeof value !== "object") return false
+
+  const requiredFields = ["documentId", "tenantId", "signatureId", "contentHash", "verificationToken", "issuedAt", "qrSignature"]
+  return requiredFields.every((field) => {
+    const raw = value[field]
+    return typeof raw === "string" && raw.trim().length > 0
+  })
+}
+
+function normalizePotentialQrEnvelope(value) {
+  if (!value || typeof value !== "object") {
+    return value
+  }
+
+  if (value.payload && typeof value.payload === "object") {
+    return value.payload
+  }
+
+  if (value.data && typeof value.data === "object") {
+    return value.data
+  }
+
+  return value
 }
 
 function parseQrPayloadText(rawValue) {
@@ -147,10 +175,15 @@ function parseQrPayloadText(rawValue) {
     }
   }
 
-  const firstJsonObject = extractFirstJsonObjectSegment(input)
-  if (firstJsonObject && firstJsonObject !== input) {
-    candidates.push(firstJsonObject)
+  const objectSegments = extractJsonObjectSegments(input)
+  for (const segment of objectSegments) {
+    if (segment && segment !== input) {
+      candidates.push(segment)
+    }
   }
+
+  let latestParsedPayload = null
+  let latestValidQrPayload = null
 
   for (const candidate of candidates) {
     try {
@@ -162,20 +195,26 @@ function parseQrPayloadText(rawValue) {
         }
       }
 
-      if (parsed && typeof parsed === "object") {
-        if (parsed.payload && typeof parsed.payload === "object") {
-          return parsed.payload
-        }
+      const normalized = normalizePotentialQrEnvelope(parsed)
 
-        if (parsed.data && typeof parsed.data === "object") {
-          return parsed.data
-        }
+      if (normalized && typeof normalized === "object") {
+        latestParsedPayload = normalized
 
-        return parsed
+        if (isLikelyQrPayload(normalized)) {
+          latestValidQrPayload = normalized
+        }
       }
     } catch {
       // Try next candidate.
     }
+  }
+
+  if (latestValidQrPayload) {
+    return latestValidQrPayload
+  }
+
+  if (latestParsedPayload) {
+    return latestParsedPayload
   }
 
   throw new Error("QR payload must be valid JSON")
