@@ -184,7 +184,7 @@ function PublicLayout() {
     <div className="public-shell">
       {isLandingPage ? null : (
         <header className="public-header minimal-header">
-          <Link to="/" className="brand-mark header-brand" aria-label={t("SatyaPramaan home")}>
+          <Link to="/app/dashboard" className="brand-mark header-brand" aria-label={t("SatyaPramaan dashboard")}>
             <span>{APP_NAME}</span>
           </Link>
         </header>
@@ -203,31 +203,55 @@ function InstitutionLayout() {
   const location = useLocation()
   const { t } = useLanguage()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [globalSearchQuery, setGlobalSearchQuery] = useState("")
   const title =
     t(PAGE_TITLES[location.pathname] || "") ||
     (location.pathname.startsWith("/app/documents/")
       ? t("Document Detail")
       : t("Institution Workspace"))
   const isDashboard = location.pathname === "/app/dashboard"
+  const isAuditPage = location.pathname === "/app/audit-logs"
+  const isDocumentsPage = location.pathname === "/app/documents"
   const isProfilePage = location.pathname === "/app/profile"
   const isIssueDocumentPage = location.pathname === "/app/issue-document"
+  const showTopbarSearch = isDashboard || isDocumentsPage
 
   useEffect(() => {
     setSidebarOpen(false)
   }, [location.pathname])
+
+  useEffect(() => {
+    if (location.pathname === "/app/documents") {
+      const params = new URLSearchParams(location.search)
+      setGlobalSearchQuery(params.get("q") || "")
+    }
+  }, [location.pathname, location.search])
 
   async function handleLogout() {
     navigate("/", { replace: true })
     await logout()
   }
 
+  function handleGlobalSearchSubmit(event) {
+    event.preventDefault()
+    const query = globalSearchQuery.trim()
+
+    if (!query) {
+      navigate("/app/documents")
+      return
+    }
+
+    const params = new URLSearchParams({ q: query })
+    navigate(`/app/documents?${params.toString()}`)
+  }
+
   return (
     <div className="app-shell">
       <aside className={`app-sidebar ${sidebarOpen ? "open" : ""}`.trim()}>
         <div className="sidebar-top">
-          <div className="brand-mark header-brand">
+          <Link to="/app/dashboard" className="brand-mark header-brand" aria-label={t("SatyaPramaan dashboard")}>
             <span>{APP_NAME}</span>
-          </div>
+          </Link>
         </div>
 
         <nav className="sidebar-nav" aria-label={t("Institution navigation")}>
@@ -247,7 +271,7 @@ function InstitutionLayout() {
         />
       ) : null}
 
-      <div className={`app-main-area ${isDashboard ? "dashboard-main-area" : ""} ${isProfilePage ? "profile-main-area" : ""}`.trim()}>
+      <div className={`app-main-area ${isDashboard ? "dashboard-main-area" : ""} ${isProfilePage ? "profile-main-area" : ""} ${isAuditPage ? "audit-main-area" : ""}`.trim()}>
         <header className="topbar">
           <div className="topbar-left">
             <button
@@ -264,9 +288,16 @@ function InstitutionLayout() {
             )}
           </div>
           <div className="topbar-right">
-            <label className="search-wrap" aria-label={t("Search")}>
-              <input type="search" placeholder={t("Search documents, IDs, recipients")} />
-            </label>
+            {showTopbarSearch ? (
+              <form className="search-wrap" role="search" aria-label={t("Search")} onSubmit={handleGlobalSearchSubmit}>
+                <input
+                  type="search"
+                  value={globalSearchQuery}
+                  onChange={(event) => setGlobalSearchQuery(event.target.value)}
+                  placeholder={t("Search documents, IDs, recipients")}
+                />
+              </form>
+            ) : null}
             {isIssueDocumentPage ? (
               <button className="btn btn-ghost chip-btn issue-verify-btn" onClick={() => navigate("/verify")}>
                 {t("Public Verify")}
@@ -284,7 +315,7 @@ function InstitutionLayout() {
             </button>
           </div>
         </header>
-        <main className={`workspace-content ${isDashboard ? "dashboard-viewport" : ""} ${isProfilePage ? "profile-viewport" : ""}`.trim()}>
+        <main className={`workspace-content ${isDashboard ? "dashboard-viewport" : ""} ${isProfilePage ? "profile-viewport" : ""} ${isAuditPage ? "audit-viewport" : ""}`.trim()}>
           <Outlet />
         </main>
       </div>
@@ -345,7 +376,7 @@ function LandingPage() {
         <div className="landing-crazy-glow landing-crazy-glow-b" />
 
         <div className="landing-crazy-topbar">
-          <Link to="/" className="brand-mark landing-brand" aria-label={t("SatyaPramaan home")}>
+          <Link to="/app/dashboard" className="brand-mark landing-brand" aria-label={t("SatyaPramaan dashboard")}>
             <span>{APP_NAME}</span>
           </Link>
         </div>
@@ -1101,10 +1132,15 @@ function IssueDocumentPage() {
 function DocumentsPage() {
   const { token } = useAuth()
   const { t } = useLanguage()
+  const location = useLocation()
+  const queryFromUrl = useMemo(() => {
+    const params = new URLSearchParams(location.search)
+    return params.get("q") || ""
+  }, [location.search])
   const [documents, setDocuments] = useState([])
   const [error, setError] = useState("")
   const [message, setMessage] = useState("")
-  const [searchQuery, setSearchQuery] = useState("")
+  const [searchQuery, setSearchQuery] = useState(queryFromUrl)
   const [typeFilter, setTypeFilter] = useState("all")
   const [statusFilter, setStatusFilter] = useState("all")
   const [revokeModal, setRevokeModal] = useState({ open: false, documentId: "", reason: "" })
@@ -1143,6 +1179,10 @@ function DocumentsPage() {
     }
   }, [token])
 
+  useEffect(() => {
+    setSearchQuery(queryFromUrl)
+  }, [queryFromUrl])
+
   async function revokeDocument() {
     if (!revokeModal.documentId || !revokeModal.reason.trim()) {
       setError("Enter a revocation reason")
@@ -1169,8 +1209,8 @@ function DocumentsPage() {
   })
 
   return (
-    <div className="page-stack">
-      <section className="card filter-toolbar">
+    <div className="page-stack audit-page">
+      <section className="card filter-toolbar audit-filter-toolbar">
         <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder={t("Search title, recipient, or document ID")} />
         <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}>
           <option value="all">{t("Type")}</option>
@@ -1217,9 +1257,11 @@ function DocumentsPage() {
                 <td data-label={t("Recipient")}>{document.recipientName || "-"}</td>
                 <td data-label={t("Issued At")}>{formatDate(document.issuedAt)}</td>
                 <td data-label={t("Status")}><StatusBadge status={document.status || "issued"} /></td>
-                <td data-label={t("Actions")} className="table-actions">
-                  <Link to={`/app/documents/${document.documentId}`} className="link-inline">{t("Detail")}</Link>
-                  <button className="btn btn-ghost" onClick={() => setRevokeModal({ open: true, documentId: document.documentId, reason: "" })}>{t("Revoke")}</button>
+                <td data-label={t("Actions")} className="table-actions-cell">
+                  <div className="table-actions">
+                    <Link to={`/app/documents/${document.documentId}`} className="btn btn-ghost">{t("Detail")}</Link>
+                    <button className="btn btn-ghost" onClick={() => setRevokeModal({ open: true, documentId: document.documentId, reason: "" })}>{t("Revoke")}</button>
+                  </div>
                 </td>
               </tr>
             )) : (
@@ -1581,15 +1623,11 @@ function PublicVerificationPage() {
   return (
     <div className="page-stack">
       <section className="verify-layout">
-        <article className="card">
-          <h2>{t("Scan QR Code")}</h2>
-          <div className="scan-frame">
-            <div className="scan-corners" />
-            <p>{t("Point camera at document QR")}</p>
-          </div>
+        <article className="card verify-panel verify-panel-qr">
+          <h2>{t("Verify QR Payload")}</h2>
           <label>
-            {t("Manual QR Payload Fallback")}
-            <textarea rows={7} value={qrPayload} onChange={(event) => setQrPayload(event.target.value)} placeholder={t("Paste QR payload")} />
+            {t("QR Payload")}
+            <textarea className="verify-payload-input" rows={10} value={qrPayload} onChange={(event) => setQrPayload(event.target.value)} placeholder={t("Paste QR payload")} />
           </label>
           <button
             className={busy && activeVerification === "qr" ? "btn btn-primary is-loading" : "btn btn-primary"}
@@ -1603,12 +1641,12 @@ function PublicVerificationPage() {
                 <span>{t("Verifying QR...")}</span>
               </>
             ) : (
-              t("Scan and Verify")
+              t("Verify QR Payload")
             )}
           </button>
         </article>
 
-        <article className="card">
+        <article className="card verify-panel verify-panel-upload">
           <h2>{t("Upload PDF for Verification")}</h2>
           <label className="file-picker-label">
             {t("PDF File")}
@@ -2383,7 +2421,7 @@ function VerificationActivityPage() {
 }
 
 function AuditLogPage() {
-  const { token } = useAuth()
+  const { token, firebaseUser } = useAuth()
   const { t } = useLanguage()
   const [entries, setEntries] = useState([])
   const [chainResult, setChainResult] = useState(null)
@@ -2575,21 +2613,41 @@ function AuditLogPage() {
     setEntryActionMessage("")
 
     try {
-      const response = await fetch(`${API_BASE_URL}/documents/${selectedEntry.documentId}/download`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+      const safeDocumentId = encodeURIComponent(String(selectedEntry.documentId).trim())
+      const downloadUrl = `${API_BASE_URL}/documents/${safeDocumentId}/download`
+
+      async function requestDownload(idToken) {
+        return fetch(downloadUrl, {
+          headers: idToken ? { Authorization: `Bearer ${idToken}` } : {},
+        })
+      }
+
+      let response = await requestDownload(token)
+
+      if ((response.status === 401 || response.status === 403) && firebaseUser) {
+        const refreshedToken = await firebaseUser.getIdToken(true)
+        response = await requestDownload(refreshedToken)
+      }
 
       if (!response.ok) {
-        throw new Error(t("Could not download document PDF"))
+        const contentType = response.headers.get("content-type") || ""
+        const isJson = contentType.includes("application/json")
+        const payload = isJson ? await response.json() : await response.text()
+        const message = isJson
+          ? payload?.error?.message || payload?.message || t("Could not download document PDF")
+          : String(payload || t("Could not download document PDF"))
+        throw new Error(message)
       }
 
       const blob = await response.blob()
-      const url = URL.createObjectURL(blob)
+      const blobUrl = URL.createObjectURL(blob)
       const anchor = window.document.createElement("a")
-      anchor.href = url
+      anchor.href = blobUrl
       anchor.download = `${selectedEntry.documentId}.pdf`
+      window.document.body.appendChild(anchor)
       anchor.click()
-      URL.revokeObjectURL(url)
+      anchor.remove()
+      window.setTimeout(() => URL.revokeObjectURL(blobUrl), 1200)
       setEntryActionMessage(`Downloaded PDF for ${selectedEntry.documentId}`)
     } catch (actionError) {
       setEntryActionError(actionError.message || "Could not download selected document")
@@ -2694,7 +2752,7 @@ function AuditLogPage() {
         </select>
       </section>
 
-      <section className="chain-summary-grid">
+      <section className="chain-summary-grid audit-chain-summary">
         <article className="card">
           <p>{t("Current Chain Status")}</p>
           <h3>{chainStatusLabel}</h3>
@@ -2709,7 +2767,7 @@ function AuditLogPage() {
         </article>
       </section>
 
-      <section className="card page-stack">
+      <section className="card page-stack audit-main-card">
         <div className="section-head">
           <h3>{t("Immutable Audit Ledger")}</h3>
           <div className="action-row">
@@ -2722,7 +2780,7 @@ function AuditLogPage() {
 
         <p className="inline-note">{t("Every issuance and verification event is chained by sequence, previous hash, and current hash for traceable evidence.")}</p>
 
-        <section className="kpi-grid">
+        <section className="kpi-grid audit-kpi-grid">
           <article className="card kpi-card">
             <p>{t("Total Events")}</p>
             <h3>{entries.length}</h3>
@@ -2754,7 +2812,7 @@ function AuditLogPage() {
           />
         </label>
 
-        <section className="card soft page-stack">
+        <section className="card soft page-stack audit-actions-card">
         <h4>{t("Selected Audit Entry Actions")}</h4>
         <p className="inline-note">
           {selectedEntry
@@ -2780,6 +2838,7 @@ function AuditLogPage() {
         {selectedQrImage ? <img className="qr-image" src={selectedQrImage} alt={t("Selected entry QR")} /> : null}
       </section>
 
+      <div className="audit-table-wrap">
       <table className="data-table">
         <thead>
           <tr>
@@ -2824,6 +2883,7 @@ function AuditLogPage() {
           )}
         </tbody>
       </table>
+      </div>
       </section>
     </div>
   )
@@ -2843,14 +2903,25 @@ function TrustScorePage() {
       if (!profile?._id) return
 
       try {
-        const [trustResponse, historyResponse] = await Promise.all([
-          api.trustScore(profile._id),
-          api.trustHistory(token, profile._id),
-        ])
+        const trustResponse = await api.trustScore(profile._id)
+        const trustData = trustResponse?.data || null
+        let historyData = Array.isArray(trustData?.history) ? trustData.history : []
+
+        if (token) {
+          try {
+            const historyResponse = await api.trustHistory(token, profile._id)
+            if (Array.isArray(historyResponse?.data)) {
+              historyData = historyResponse.data
+            }
+          } catch {
+            // Fall back to embedded trust history when the dedicated history endpoint is unavailable.
+          }
+        }
 
         if (!active) return
-        setTrust(trustResponse.data)
-        setHistory(historyResponse.data || [])
+        setTrust(trustData)
+        setHistory(historyData)
+        setError("")
       } catch (loadError) {
         if (!active) return
         setError(loadError.message || t("Could not load trust score"))
@@ -2864,18 +2935,35 @@ function TrustScorePage() {
     }
   }, [profile, token])
 
+  const embeddedHistory = Array.isArray(trust?.history) ? trust.history : []
+  const historyFeed = history.length ? history : embeddedHistory
+  const latestHistoryEntry = historyFeed.length ? historyFeed[historyFeed.length - 1] : null
+  const historyForChart = historyFeed.length
+    ? historyFeed.slice(-7)
+    : Number.isFinite(Number(trust?.currentScore))
+      ? [{
+        eventId: "current-score",
+        newScore: Number(trust.currentScore),
+        computedAt: trust?.lastComputedAt || new Date().toISOString(),
+      }]
+      : []
   const hasTrustActivity =
     Number(trust?.metrics?.totalVerifications || 0) > 0 ||
     Number(trust?.metrics?.tamperedDetections || 0) > 0 ||
-    Number(trust?.metrics?.revokedDocuments || 0) > 0
+    Number(trust?.metrics?.revokedDocuments || 0) > 0 ||
+    historyFeed.length > 0 ||
+    Number(trust?.currentScore || 0) > 0
   const displayScore = hasTrustActivity ? trust?.currentScore ?? "-" : "-"
   const displayBand = hasTrustActivity ? trust?.scoreBand || "-" : t("Not Rated")
-  const scoreTrend = history.length > 1
-    ? Number(history[history.length - 1]?.newScore || 0) - Number(history[Math.max(0, history.length - 2)]?.newScore || 0)
+  const scoreTrend = historyFeed.length > 1
+    ? Number(historyFeed[historyFeed.length - 1]?.newScore || 0) - Number(historyFeed[Math.max(0, historyFeed.length - 2)]?.newScore || 0)
     : 0
-  const recentHistory = history.slice().reverse().slice(0, 7)
-  const chartMax = Math.max(1, ...recentHistory.map((item) => Number(item.newScore || 0)))
+  const chartMax = Math.max(1, ...historyForChart.map((item) => Number(item.newScore || 0)))
+  const chartMin = historyForChart.length ? Math.min(...historyForChart.map((item) => Number(item.newScore || 0))) : 0
+  const chartRange = Math.max(1, chartMax - chartMin)
+  const latestChartScore = historyForChart.length ? Number(historyForChart[historyForChart.length - 1]?.newScore || 0) : null
   const trustMetrics = trust?.metrics || {}
+  const weightBreakdown = latestHistoryEntry?.weightsApplied || {}
 
   return (
     <div className="page-stack">
@@ -2892,19 +2980,35 @@ function TrustScorePage() {
           <ul className="formula-list">
             <li>
               <span>{t("Base score")}</span>
-              <strong>{Number(trust?.baseScore || 0).toFixed(1)}</strong>
+              <strong>{Number(weightBreakdown.base || 50).toFixed(1)}</strong>
             </li>
             <li>
               <span>{t("Issuer age contribution")}</span>
-              <strong>{Number(trustMetrics.issuerAgeContribution || 0).toFixed(1)}</strong>
+              <strong>{Number(weightBreakdown.issuerAgeWeight || 0).toFixed(1)}</strong>
             </li>
             <li>
               <span>{t("Successful verification contribution")}</span>
-              <strong>{Number(trustMetrics.successfulVerificationContribution || 0).toFixed(1)}</strong>
+              <strong>{Number(weightBreakdown.successRateWeight || 0).toFixed(1)}</strong>
             </li>
             <li>
               <span>{t("Verification volume contribution")}</span>
-              <strong>{Number(trustMetrics.verificationVolumeContribution || 0).toFixed(1)}</strong>
+              <strong>{Number(weightBreakdown.volumeConfidenceWeight || 0).toFixed(1)}</strong>
+            </li>
+            <li>
+              <span>{t("Clean recent contribution")}</span>
+              <strong>{Number(weightBreakdown.cleanRecentWeight || 0).toFixed(1)}</strong>
+            </li>
+            <li>
+              <span>{t("Tamper penalty")}</span>
+              <strong>-{Number(weightBreakdown.tamperPenalty || 0).toFixed(1)}</strong>
+            </li>
+            <li>
+              <span>{t("Revoked penalty")}</span>
+              <strong>-{Number(weightBreakdown.revokedPenalty || 0).toFixed(1)}</strong>
+            </li>
+            <li>
+              <span>{t("Anomaly penalty")}</span>
+              <strong>-{Number(weightBreakdown.anomalyPenalty || 0).toFixed(1)}</strong>
             </li>
           </ul>
         </article>
@@ -2913,18 +3017,37 @@ function TrustScorePage() {
       <section className="card">
         <h3>{t("Score History")}</h3>
         {error ? <ErrorState title={t("Trust Error")} body={error} /> : null}
-        <div className="history-chart">
-          {recentHistory.length ? recentHistory.map((item, index) => {
-            const value = Number(item.newScore || 0)
-            const normalized = Math.max(8, Math.round((value / chartMax) * 100))
-            return (
-              <div key={item.eventId || `${item.computedAt}-${index}`} className="bar-wrap">
-                <div style={{ height: `${normalized}%` }} className="history-bar" />
-                <small>{index + 1}</small>
+        <div className="history-chart-shell">
+          {historyForChart.length ? (
+            <>
+              <div className="history-chart-meta">
+                <small>{t("Latest")}: {latestChartScore?.toFixed(1)}</small>
+                <small>{t("Range")}: {chartMin.toFixed(1)} - {chartMax.toFixed(1)}</small>
               </div>
-            )
-          }) : <p className="inline-note">{t("No trust history yet")}</p>}
+              <div className="history-chart">
+                {historyForChart.map((item, index) => {
+                  const value = Number(item.newScore || 0)
+                  const normalized = historyForChart.length === 1
+                    ? 72
+                    : Math.max(12, Math.round(((value - chartMin) / chartRange) * 100))
+
+                  return (
+                    <div key={item.eventId || `${item.computedAt}-${index}`} className="bar-wrap">
+                      <small className="bar-value">{value.toFixed(1)}</small>
+                      <div className="history-bar-track">
+                        <div style={{ height: `${normalized}%` }} className="history-bar" />
+                      </div>
+                      <small className="bar-index">{index + 1}</small>
+                    </div>
+                  )
+                })}
+              </div>
+            </>
+          ) : <p className="inline-note">{t("No trust history yet")}</p>}
         </div>
+        <p className="inline-note">
+          {t("Totals")}: {t("Verifications")} {Number(trustMetrics.totalVerifications || 0)}, {t("Successful")} {Number(trustMetrics.successfulVerifications || 0)}, {t("Tampered")} {Number(trustMetrics.tamperedDetections || 0)}, {t("Revoked")} {Number(trustMetrics.revokedDocuments || 0)}
+        </p>
       </section>
     </div>
   )

@@ -9,7 +9,7 @@ router.get("/trust/:issuerUserId", controller.getTrustScore);
 router.get(
   "/trust/:issuerUserId/history",
   firebaseAuth,
-  requireRole("institution_admin", "institution_operator", "platform_admin"),
+  requireRole("institution_admin", "institution_operator", "verifier", "platform_admin"),
   controller.getTrustHistory
 );
 
