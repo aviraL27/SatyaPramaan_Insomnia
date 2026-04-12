@@ -2,6 +2,99 @@ const { z } = require("zod");
 const { asyncHandler } = require("../../utils/asyncHandler");
 const verificationService = require("./verification.service");
 
+function extractFirstJsonObjectSegment(input) {
+  if (typeof input !== "string") {
+    return null;
+  }
+
+  let depth = 0;
+  let start = -1;
+  let inString = false;
+  let escaped = false;
+
+  for (let index = 0; index < input.length; index += 1) {
+    const char = input[index];
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+
+      continue;
+    }
+
+    if (char === '"') {
+      inString = true;
+      continue;
+    }
+
+    if (char === "{") {
+      if (depth === 0) {
+        start = index;
+      }
+      depth += 1;
+      continue;
+    }
+
+    if (char === "}" && depth > 0) {
+      depth -= 1;
+
+      if (depth === 0 && start >= 0) {
+        return input.slice(start, index + 1);
+      }
+    }
+  }
+
+  return null;
+}
+
+function parsePossiblyRepeatedJson(raw) {
+  const input = String(raw || "").trim();
+
+  if (!input) {
+    return undefined;
+  }
+
+  const candidates = [input];
+
+  if (input.length % 2 === 0) {
+    const midpoint = input.length / 2;
+    const firstHalf = input.slice(0, midpoint);
+    const secondHalf = input.slice(midpoint);
+
+    if (firstHalf === secondHalf) {
+      candidates.push(firstHalf);
+    }
+  }
+
+  const firstJsonObject = extractFirstJsonObjectSegment(input);
+  if (firstJsonObject && firstJsonObject !== input) {
+    candidates.push(firstJsonObject);
+  }
+
+  for (const candidate of candidates) {
+    try {
+      let parsed = JSON.parse(candidate);
+
+      for (let unwrap = 0; unwrap < 2; unwrap += 1) {
+        if (typeof parsed === "string") {
+          parsed = JSON.parse(parsed);
+        }
+      }
+
+      return parsed;
+    } catch (_error) {
+      // Keep trying other candidates.
+    }
+  }
+
+  return raw;
+}
+
 function parseJsonField(value) {
   if (typeof value !== "string") {
     return value;
@@ -13,11 +106,7 @@ function parseJsonField(value) {
     return undefined;
   }
 
-  try {
-    return JSON.parse(trimmed);
-  } catch (error) {
-    return value;
-  }
+  return parsePossiblyRepeatedJson(trimmed);
 }
 
 const qrSchema = z.object({

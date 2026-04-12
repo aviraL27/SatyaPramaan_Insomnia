@@ -479,6 +479,176 @@ describe("verification.service upload flow", () => {
     expect(result.result.tamperFindings).toBeNull();
   });
 
+  it("returns verified when uploaded file matches issued binary baseline", async () => {
+    const documentId = "doc-issued-binary-match";
+    const fingerprint = crypto.createHash("sha256").update("issuer-public-key-pem").digest("hex");
+    const { service } = loadService({
+      document: {
+        documentId,
+        tenantId: "tenant-1",
+        status: "issued",
+        issuerUserId: "issuer-1",
+        issuerInstitutionName: "Issuer One",
+        verificationToken: "token-issued-binary-match",
+        canonicalContentHash: "canon-source",
+        metadataHash: "meta-source",
+        signingKeyFingerprint: fingerprint,
+        signatureId: "sig-issued-binary-match",
+        signatureValue: "signed-value",
+        pageCount: 1,
+        title: "Certificate",
+        documentType: "certificate",
+        recipientName: "Ava",
+        recipientReference: null,
+        expiresAt: null,
+        customMetadata: {},
+        issuedAt: new Date("2026-01-01T00:00:00.000Z"),
+        fileBinaryHash: "source-hash",
+        ocrBaseline: {
+          enabled: true,
+          fileHash: crypto.createHash("sha256").update("candidate-pdf").digest("hex"),
+          fullText: "hello",
+          pages: [{ pageNumber: 1, text: "hello", confidence: 0.92 }],
+          averageConfidence: 0.92,
+          pageCount: 1
+        },
+        textPositions: [
+          {
+            pageNumber: 1,
+            words: [{ text: "hello", normalizedText: "hello", x: 12, y: 12, width: 20, height: 10, readingOrderIndex: 0 }]
+          }
+        ],
+        qrPayload: {
+          documentId,
+          tenantId: "tenant-1",
+          signatureId: "sig-issued-binary-match",
+          contentHash: "canon-source",
+          verificationToken: "token-issued-binary-match",
+          issuedAt: new Date("2026-01-01T00:00:00.000Z"),
+          qrSignature: "qr-signature"
+        }
+      },
+      parsedPdf: {
+        pageCount: 1,
+        metadata: { info: {} },
+        textPositions: [
+          {
+            pageNumber: 1,
+            words: [{ text: "changed", normalizedText: "changed", x: 12, y: 12, width: 24, height: 10, readingOrderIndex: 0 }]
+          }
+        ],
+        pageText: [{ pageNumber: 1, text: "changed" }],
+        fullText: "changed"
+      },
+      buildHashes: {
+        metadataHash: "meta-variant",
+        canonicalContentHash: "canon-variant"
+      },
+      ocrComparison: {
+        changedWordCount: 4,
+        changedPages: [1],
+        confidence: 0.91,
+        available: true
+      },
+      visualComparison: {
+        visualDiffScoreByPage: [{ pageNumber: 1, score: 0.37 }],
+        changedPages: [1],
+        visualLayerChanged: true
+      }
+    });
+
+    const result = await service.verifyUploadedFile(buildRequest({ documentId }));
+
+    expect(result.result.status).toBe("verified");
+    expect(result.result.reasonCode).toBe("VERIFIED_ISSUED_BINARY_MATCH");
+    expect(result.result.tamperFindings).toBeNull();
+  });
+
+  it("returns verified when uploaded file matches original source binary baseline", async () => {
+    const documentId = "doc-source-binary-match";
+    const fingerprint = crypto.createHash("sha256").update("issuer-public-key-pem").digest("hex");
+    const { service } = loadService({
+      document: {
+        documentId,
+        tenantId: "tenant-1",
+        status: "issued",
+        issuerUserId: "issuer-1",
+        issuerInstitutionName: "Issuer One",
+        verificationToken: "token-source-binary-match",
+        canonicalContentHash: "canon-source",
+        metadataHash: "meta-source",
+        signingKeyFingerprint: fingerprint,
+        signatureId: "sig-source-binary-match",
+        signatureValue: "signed-value",
+        pageCount: 1,
+        title: "Certificate",
+        documentType: "certificate",
+        recipientName: "Ava",
+        recipientReference: null,
+        expiresAt: null,
+        customMetadata: {},
+        issuedAt: new Date("2026-01-01T00:00:00.000Z"),
+        fileBinaryHash: crypto.createHash("sha256").update("candidate-pdf").digest("hex"),
+        ocrBaseline: {
+          enabled: true,
+          fileHash: "issued-hash-different-from-source",
+          fullText: "hello",
+          pages: [{ pageNumber: 1, text: "hello", confidence: 0.92 }],
+          averageConfidence: 0.92,
+          pageCount: 1
+        },
+        textPositions: [
+          {
+            pageNumber: 1,
+            words: [{ text: "hello", normalizedText: "hello", x: 12, y: 12, width: 20, height: 10, readingOrderIndex: 0 }]
+          }
+        ],
+        qrPayload: {
+          documentId,
+          tenantId: "tenant-1",
+          signatureId: "sig-source-binary-match",
+          contentHash: "canon-source",
+          verificationToken: "token-source-binary-match",
+          issuedAt: new Date("2026-01-01T00:00:00.000Z"),
+          qrSignature: "qr-signature"
+        }
+      },
+      parsedPdf: {
+        pageCount: 1,
+        metadata: { info: {} },
+        textPositions: [
+          {
+            pageNumber: 1,
+            words: [{ text: "changed", normalizedText: "changed", x: 12, y: 12, width: 24, height: 10, readingOrderIndex: 0 }]
+          }
+        ],
+        pageText: [{ pageNumber: 1, text: "changed" }],
+        fullText: "changed"
+      },
+      buildHashes: {
+        metadataHash: "meta-variant",
+        canonicalContentHash: "canon-variant"
+      },
+      ocrComparison: {
+        changedWordCount: 4,
+        changedPages: [1],
+        confidence: 0.91,
+        available: true
+      },
+      visualComparison: {
+        visualDiffScoreByPage: [{ pageNumber: 1, score: 0.37 }],
+        changedPages: [1],
+        visualLayerChanged: true
+      }
+    });
+
+    const result = await service.verifyUploadedFile(buildRequest({ documentId }));
+
+    expect(result.result.status).toBe("verified");
+    expect(result.result.reasonCode).toBe("VERIFIED_SOURCE_BINARY_MATCH");
+    expect(result.result.tamperFindings).toBeNull();
+  });
+
   it("returns tampered when OCR layer differs even if text layer matches", async () => {
     const documentId = "doc-ocr-diff";
     const fingerprint = crypto.createHash("sha256").update("issuer-public-key-pem").digest("hex");

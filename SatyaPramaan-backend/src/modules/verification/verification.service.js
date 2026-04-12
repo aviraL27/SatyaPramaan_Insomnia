@@ -34,6 +34,7 @@ const { extractOcrLayer, compareOcrLayers } = require("./ocr.service");
 
 const ASYNC_UPLOAD_SIZE_THRESHOLD_BYTES = 5 * 1024 * 1024;
 const DETECTOR_ASYNC_SIZE_THRESHOLD_BYTES = 2 * 1024 * 1024;
+const VERIFICATION_DECISION_VERSION = 3;
 
 function withTimeout(promise, timeoutMs, timeoutMessage) {
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
@@ -143,7 +144,7 @@ function buildAnonymousSessionId(ip, userAgent) {
 }
 
 function buildVerificationJobId({ documentId, uploadedFileHash }) {
-  return `verify_${sha256(`${documentId}:${uploadedFileHash}`).slice(0, 24)}`;
+  return `verify_${sha256(`${VERIFICATION_DECISION_VERSION}:${documentId}:${uploadedFileHash}`).slice(0, 24)}`;
 }
 
 function buildPendingJobResponse({ jobId, documentId }) {
@@ -865,6 +866,7 @@ async function performUploadVerification(req, context = null) {
   const metadataHashMatch = candidateHashes.metadataHash === document.metadataHash;
   const canonicalHashMatch = candidateHashes.canonicalContentHash === document.canonicalContentHash;
   const pageCountMatch = Number(parsedUpload.pageCount) === Number(document.pageCount);
+  const sourceBinaryHashMatch = uploadedFileHash === document.fileBinaryHash;
   const issuedFileHash =
     typeof document?.ocrBaseline?.fileHash === "string" && document.ocrBaseline.fileHash.length
       ? document.ocrBaseline.fileHash
@@ -981,6 +983,14 @@ async function performUploadVerification(req, context = null) {
     resultStatus = "tampered";
     resultReasonCode = "PAGE_COUNT_MISMATCH";
     resultMessage = "Uploaded PDF page count does not match the issued document";
+  } else if (sourceBinaryHashMatch === true) {
+    resultStatus = "verified";
+    resultReasonCode = "VERIFIED_SOURCE_BINARY_MATCH";
+    resultMessage = "Uploaded PDF exactly matches the original issued source document";
+  } else if (issuedBinaryHashMatch === true) {
+    resultStatus = "verified";
+    resultReasonCode = "VERIFIED_ISSUED_BINARY_MATCH";
+    resultMessage = "Uploaded PDF exactly matches the issued document baseline";
   } else if (
     issuedBinaryHashMatch === false &&
     !detectors.textLayerChanged &&
@@ -1073,6 +1083,7 @@ async function performUploadVerification(req, context = null) {
       canonicalHashMatch,
       metadataHashMatch,
       pageCountMatch,
+      sourceBinaryHashMatch,
       issuedBinaryHashMatch,
       visualBaselineAvailable,
       detectors

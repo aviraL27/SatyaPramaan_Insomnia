@@ -80,6 +80,107 @@ function loadVerificationResultSnapshot() {
   }
 }
 
+function extractFirstJsonObjectSegment(input) {
+  if (typeof input !== "string") return null
+
+  let depth = 0
+  let start = -1
+  let inString = false
+  let escaped = false
+
+  for (let index = 0; index < input.length; index += 1) {
+    const char = input[index]
+
+    if (inString) {
+      if (escaped) {
+        escaped = false
+      } else if (char === "\\") {
+        escaped = true
+      } else if (char === '"') {
+        inString = false
+      }
+      continue
+    }
+
+    if (char === '"') {
+      inString = true
+      continue
+    }
+
+    if (char === "{") {
+      if (depth === 0) {
+        start = index
+      }
+      depth += 1
+      continue
+    }
+
+    if (char === "}") {
+      if (depth > 0) {
+        depth -= 1
+        if (depth === 0 && start >= 0) {
+          return input.slice(start, index + 1)
+        }
+      }
+    }
+  }
+
+  return null
+}
+
+function parseQrPayloadText(rawValue) {
+  const input = String(rawValue || "").trim()
+
+  if (!input) {
+    throw new Error("QR payload is required")
+  }
+
+  const candidates = [input]
+
+  if (input.length % 2 === 0) {
+    const midpoint = input.length / 2
+    const firstHalf = input.slice(0, midpoint)
+    const secondHalf = input.slice(midpoint)
+
+    if (firstHalf === secondHalf) {
+      candidates.push(firstHalf)
+    }
+  }
+
+  const firstJsonObject = extractFirstJsonObjectSegment(input)
+  if (firstJsonObject && firstJsonObject !== input) {
+    candidates.push(firstJsonObject)
+  }
+
+  for (const candidate of candidates) {
+    try {
+      let parsed = JSON.parse(candidate)
+
+      for (let unwrap = 0; unwrap < 2; unwrap += 1) {
+        if (typeof parsed === "string") {
+          parsed = JSON.parse(parsed)
+        }
+      }
+
+      if (parsed && typeof parsed === "object") {
+        if (parsed.payload && typeof parsed.payload === "object") {
+          return parsed.payload
+        }
+
+        if (parsed.data && typeof parsed.data === "object") {
+          return parsed.data
+        }
+
+        return parsed
+      }
+    } catch {
+      // Try next candidate.
+    }
+  }
+
+  throw new Error("QR payload must be valid JSON")
+}
+
 function loadImageElement(src) {
   return new Promise((resolve, reject) => {
     const image = new window.Image()
@@ -91,6 +192,9 @@ function loadImageElement(src) {
 
 function mapAttemptToResultPayload(attempt) {
   if (!attempt) return null
+
+  const normalizedStatus = String(attempt.resultStatus || "").toLowerCase()
+  const includeTamperFindings = normalizedStatus === "tampered" || normalizedStatus === "suspicious"
 
   const detectors = attempt?.contentComparison?.detectors || attempt?.tamperFindings?.detectors || {
     textLayerChanged: false,
@@ -117,7 +221,7 @@ function mapAttemptToResultPayload(attempt) {
       detectors,
       visualDiffScoreByPage,
       ocrDiffSummary,
-      tamperFindings: attempt.tamperFindings || null,
+      tamperFindings: includeTamperFindings ? (attempt.tamperFindings || null) : null,
     },
   }
 }
@@ -1570,7 +1674,7 @@ function PublicVerificationPage() {
     setError("")
 
     try {
-      const parsed = JSON.parse(qrPayload)
+      const parsed = parseQrPayloadText(qrPayload)
       const response = await api.verifyQrPublic(parsed)
       const resultToken = response.data?.resultAccessToken || null
       const attemptId = response.data?.attempt?.attemptId || null
@@ -1599,7 +1703,10 @@ function PublicVerificationPage() {
       formData.append("file", uploadFile)
 
       if (documentId) formData.append("documentId", documentId)
-      if (qrPayload) formData.append("qrPayload", qrPayload)
+      if (qrPayload) {
+        const normalizedQrPayload = parseQrPayloadText(qrPayload)
+        formData.append("qrPayload", JSON.stringify(normalizedQrPayload))
+      }
 
       const response = isAuthenticated
         ? await api.verifyUploadAuth(token, formData)
@@ -1827,6 +1934,20 @@ function VerificationResultPage() {
   }
 
   const result = payload.result || payload
+  const normalizedStatus = String(result.status || "").toLowerCase()
+  const shouldShowTamperWarnings = normalizedStatus === "tampered" || normalizedStatus === "suspicious"
+  const statusBandTone =
+    normalizedStatus === "verified"
+      ? "verified"
+      : normalizedStatus === "tampered"
+        ? "tampered"
+        : normalizedStatus === "suspicious"
+          ? "suspicious"
+          : normalizedStatus === "revoked"
+            ? "revoked"
+            : normalizedStatus === "pending"
+              ? "pending"
+              : "neutral"
   const detectors = result.detectors || result.tamperFindings?.detectors || {
     textLayerChanged: false,
     ocrLayerChanged: false,
@@ -1838,10 +1959,12 @@ function VerificationResultPage() {
     confidence: null,
   }
   const visualDiffScoreByPage = result.visualDiffScoreByPage || result.tamperFindings?.visualDiffScoreByPage || []
-  const visualFlaggedPages = (result.tamperFindings?.visualChangedPages || visualDiffScoreByPage
-    .filter((entry) => Number(entry?.score) > 0)
-    .map((entry) => Number(entry.pageNumber)))
-    .filter((value) => Number.isFinite(value) && value > 0)
+  const visualFlaggedPages = shouldShowTamperWarnings
+    ? (result.tamperFindings?.visualChangedPages || visualDiffScoreByPage
+      .filter((entry) => Number(entry?.score) > 0)
+      .map((entry) => Number(entry.pageNumber)))
+      .filter((value) => Number.isFinite(value) && value > 0)
+    : []
   const changedPagesWithoutBoxes = visualFlaggedPages.filter((pageNumber) => {
     const boxes = result.tamperFindings?.rectanglesByPage?.[String(pageNumber)] || []
     return boxes.length === 0
@@ -1880,7 +2003,6 @@ function VerificationResultPage() {
     return Math.max(peak, value)
   }, 0)
   const visualPeakPercent = Math.min(100, Math.round((visualPeak > 1 ? visualPeak : visualPeak * 100)))
-  const normalizedStatus = String(result.status || "").toLowerCase()
   const outcomeScore =
     normalizedStatus === "verified"
       ? 92
@@ -1915,7 +2037,7 @@ function VerificationResultPage() {
 
   return (
     <div className="page-stack">
-      <section className="status-band tampered card">
+      <section className={`status-band ${statusBandTone} card`}>
         <div>
           <StatusBadge status={result.status || "pending"} large />
           <p>{result.reason || result.resultMessage || t("No reason provided by backend.")}</p>
@@ -2024,6 +2146,7 @@ function VerificationResultPage() {
             rectanglesByPage={rectanglesByPage}
             flaggedPages={visualFlaggedPages}
             status={result.status}
+            warnOnVisualOnly={shouldShowTamperWarnings}
           />
 
           <div className="finding-list">
@@ -2063,12 +2186,12 @@ function MetricBar({ label, value, helper, tone = "neutral" }) {
   )
 }
 
-function VerificationVisualPreview({ uploadedFile, rectanglesByPage, flaggedPages = [], status }) {
+function VerificationVisualPreview({ uploadedFile, rectanglesByPage, flaggedPages = [], status, warnOnVisualOnly = false }) {
   const { t } = useLanguage()
   const [renderedPages, setRenderedPages] = useState([])
   const [error, setError] = useState("")
 
-  const buildFallbackPreviews = useCallback(({ rectangleMap, visualOnlyPages, currentStatus }) => {
+  const buildFallbackPreviews = useCallback(({ rectangleMap, visualOnlyPages, currentStatus, warnOnVisualOnly: fallbackWarnOnVisualOnly }) => {
     const candidatePages = [
       ...Object.keys(rectangleMap || {}).map((value) => Number(value)),
       ...visualOnlyPages,
@@ -2119,7 +2242,8 @@ function VerificationVisualPreview({ uploadedFile, rectanglesByPage, flaggedPage
       })
 
       if (!rectangles.length) {
-        const shouldWarnRed = visualOnlySet.has(pageNumber) || String(currentStatus || "").toLowerCase() === "tampered"
+        const shouldWarnRed =
+          fallbackWarnOnVisualOnly && (visualOnlySet.has(pageNumber) || String(currentStatus || "").toLowerCase() === "tampered")
 
         if (shouldWarnRed) {
           context.fillStyle = "rgba(90, 8, 24, 0.14)"
@@ -2206,7 +2330,8 @@ function VerificationVisualPreview({ uploadedFile, rectanglesByPage, flaggedPage
           })
 
           if (!rectangles.length) {
-            const shouldWarnRed = visualOnlyPageSet.has(pageNumber) || String(status || "").toLowerCase() === "tampered"
+            const shouldWarnRed =
+              warnOnVisualOnly && (visualOnlyPageSet.has(pageNumber) || String(status || "").toLowerCase() === "tampered")
 
             if (shouldWarnRed) {
               context.fillStyle = "rgba(90, 8, 24, 0.14)"
@@ -2241,6 +2366,7 @@ function VerificationVisualPreview({ uploadedFile, rectanglesByPage, flaggedPage
           rectangleMap: rectanglesByPage,
           visualOnlyPages: flaggedPages,
           currentStatus: status,
+          warnOnVisualOnly,
         })
 
         if (fallbackPreviews.length) {
@@ -2259,7 +2385,7 @@ function VerificationVisualPreview({ uploadedFile, rectanglesByPage, flaggedPage
     return () => {
       active = false
     }
-  }, [uploadedFile, rectanglesByPage, flaggedPages, status, buildFallbackPreviews])
+  }, [uploadedFile, rectanglesByPage, flaggedPages, status, warnOnVisualOnly, t, buildFallbackPreviews])
 
   if (!uploadedFile) {
     return <p className="inline-note">{t("Visual preview appears for upload verification results in the same session. For QR-only verification there is no uploaded file preview.")}</p>
@@ -2276,7 +2402,7 @@ function VerificationVisualPreview({ uploadedFile, rectanglesByPage, flaggedPage
   return (
     <div className="page-stack">
       <p className="inline-note">
-        {String(status || "").toLowerCase() === "tampered"
+        {warnOnVisualOnly
           ? t("Red overlays show changed regions detected in the uploaded PDF.")
           : t("Green border indicates no explicit changed regions were highlighted for this result.")}
       </p>
