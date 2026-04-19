@@ -1,4 +1,4 @@
-# DigiSecure
+# SatyaPramaan
 
 Full-stack digital document issuance and verification platform with tamper checks, trust scoring, audit chain verification, and Firebase-authenticated access.
 
@@ -19,7 +19,7 @@ Full-stack digital document issuance and verification platform with tamper check
 
 ## Overview
 
-DigiSecure is organized as a monorepo with:
+SatyaPramaan is organized as a monorepo with:
 
 - `digisecure-backend`: Node.js/Express API + MongoDB + Redis workers
 - `digisecure-frontend`: React + Vite client app
